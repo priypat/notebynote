@@ -1,5 +1,6 @@
 import type { GetTakesOptions, Take, TakeDraft } from "@/lib/types";
 import { MOCK_TAKES, mockTakeWithEnvelopes } from "@/lib/mock";
+import { scoreTake } from "@/lib/scoring/breathScore";
 import {
   ApiError,
   STORAGE_KEYS,
@@ -9,6 +10,7 @@ import {
   readStore,
   writeStore,
 } from "./client";
+import { getProfile } from "./profile";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -69,22 +71,29 @@ export async function createTake(draft: TakeDraft): Promise<Take> {
   }
 
   const history = allTakesNewestFirst();
-  const longestHoldSec = Math.max(...draft.phrases.map((p) => p.heldSec));
-  const bestSoFar = history.reduce((m, t) => Math.max(m, t.longestHoldSec), 0);
+  const previousBestHoldSec = history.reduce((m, t) => Math.max(m, t.longestHoldSec), 0);
+  const profile = await getProfile();
+  const { breathScore, longestHoldSec, isPersonalRecord, sigilSeed } = scoreTake(
+    draft.phrases,
+    profile,
+    previousBestHoldSec,
+  );
 
   const take: Take = {
-    id: `take-local-${history.length + 1}-${draft.startedAt}`,
+    // No colons — a raw ISO timestamp in the id makes a URL path segment
+    // that some client-side navigations round-trip through inconsistently
+    // (Next.js's dynamic route params have been observed re-encoding a
+    // literal ":" but never decoding it back, corrupting the lookup key).
+    id: `take-local-${history.length + 1}-${Date.parse(draft.startedAt)}`,
     songId: draft.songId,
     startedAt: draft.startedAt,
     endedAt: draft.endedAt,
     completion: draft.completion,
     phrases: draft.phrases,
     longestHoldSec,
-    // TODO(api): replace with breathScore() from lib/scoring/breathScore.ts
-    // once it exists. This placeholder is a stand-in, not the algorithm.
-    breathScore: placeholderScore(draft),
-    isPersonalRecord: longestHoldSec > bestSoFar,
-    sigilSeed: deriveSigilSeed(draft),
+    breathScore,
+    isPersonalRecord,
+    sigilSeed,
   };
 
   writeStore(STORAGE_KEYS.takes, [...storedTakes(), take]);
@@ -112,41 +121,4 @@ function stripEnvelopes(take: Take): Take {
     ...take,
     phrases: take.phrases.map(({ envelope: _envelope, ...rest }) => rest),
   };
-}
-
-/**
- * Placeholder until lib/scoring/breathScore.ts lands. Length against target,
- * weighted by steadiness. Deliberately simple and deliberately not the real
- * thing — do not tune this, replace it.
- */
-function placeholderScore(draft: TakeDraft): number {
-  const n = draft.phrases.length;
-  const mean =
-    draft.phrases.reduce((sum, p) => sum + p.heldSec * p.steadiness, 0) / n;
-  return Math.round(Math.min(100, mean * 12));
-}
-
-/**
- * A stable 32-bit seed derived from the take's own contents, so the same take
- * draws the same terrain on every device without the server and client having
- * to agree on anything but this function. FNV-1a.
- *
- * TODO(api): the server must return sigilSeed; if it ever computes one
- * differently, the server's value wins and this is dead code.
- */
-function deriveSigilSeed(draft: TakeDraft): number {
-  const input = [
-    draft.songId,
-    draft.startedAt,
-    ...draft.phrases.map(
-      (p) => `${p.phraseId}:${p.heldSec}:${p.steadiness}:${p.decaySlope}`,
-    ),
-  ].join("|");
-
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
 }

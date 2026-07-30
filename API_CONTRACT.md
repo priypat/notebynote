@@ -194,8 +194,13 @@ server-side and return them.** Two reasons, both load-bearing:
 
 The scoring function lives at `lib/scoring/breathScore.ts` — a pure function
 with zero imports, specifically so it can be lifted into your service unchanged
-rather than reimplemented. Port that file; don't rewrite it. Until it lands,
-both sides use a documented placeholder.
+rather than reimplemented. Port that file; don't rewrite it. `lib/api/takes.ts`
+already calls its `scoreTake()` for `breathScore`, `longestHoldSec`,
+`isPersonalRecord`, and `sigilSeed` — there is no placeholder left on the
+client side to match; your service should call the same function with the
+same inputs (the take's `phrases`, the caller's `Profile`, and the longest
+`heldSec` across every one of the caller's prior takes) and get the same
+answer.
 
 ### `POST /api/takes`
 
@@ -250,7 +255,7 @@ both sides use a documented placeholder.
 | `breathScore` | Integer `0..100`. From `lib/scoring/breathScore.ts`. |
 | `longestHoldSec` | `max(phrases[].heldSec)`. |
 | `isPersonalRecord` | `longestHoldSec` strictly greater than the max over **all** the caller's prior takes, across every song. The person's first ever take is a record. Compare against stored takes, not against a cached best, or a deleted take will resurrect a stale record. |
-| `sigilSeed` | Unsigned 32-bit, derived deterministically from the take's own contents and then **immutable**. The client's derivation is FNV-1a over `songId`, `startedAt`, and each phrase's `phraseId:heldSec:steadiness:decaySlope` — see `deriveSigilSeed` in `lib/api/takes.ts`. Match it or don't; the server's value is authoritative and the client uses what you return. What matters is that it never changes for a given take. |
+| `sigilSeed` | Unsigned 32-bit, derived deterministically from the take's own contents and then **immutable**. `scoreTake()` in `lib/scoring/breathScore.ts` derives it (FNV-1a over the rounded `breathScore` and each phrase's `phraseId:heldSec:steadiness`) — port that function and you get the same value for free. The server's value is authoritative regardless; what matters is that it never changes for a given take. |
 
 **Idempotency.** `startedAt` is unique per person in practice, and a double-tap
 or a retry after a timeout will resend the same draft. Treat

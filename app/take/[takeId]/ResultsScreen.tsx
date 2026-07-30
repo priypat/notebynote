@@ -4,12 +4,18 @@
  * The results screen. One restrained moment for a personal record — a gold
  * pip and a single settling animation, never confetti — and otherwise the
  * same calm register as the rest of the app.
+ *
+ * Fetches through lib/api/* rather than reading lib/mock/* directly — the
+ * mock layer's writes (a take just recorded, a profile edit) live in
+ * localStorage, which only a client-side fetch can see. See API_CONTRACT.md.
  */
 
 import Link from "next/link";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MotionConfig, motion } from "motion/react";
 import type { Take } from "@/lib/types";
+import { ApiError, getSong, getTake, getTakes } from "@/lib/api";
+import { describeTake } from "@/lib/scoring/breathScore";
 import { generateSigil } from "@/lib/sigil/generate";
 import { BROWSER_CHROME } from "@/lib/tokens";
 import { Sigil } from "@/components/Sigil";
@@ -71,7 +77,151 @@ function exportSigilPng(svg: SVGSVGElement, filename: string) {
   img.src = url;
 }
 
-export function ResultsScreen({
+type LoadState =
+  | { status: "loading" }
+  | { status: "not-found" }
+  | { status: "error"; message: string }
+  | {
+      status: "ready";
+      take: Take;
+      sentence: string;
+      songTitle: string;
+      hueSeed: number;
+    };
+
+function useResults(takeId: string): LoadState {
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+
+    async function load() {
+      try {
+        const [take, history] = await Promise.all([
+          getTake(takeId),
+          getTakes({ limit: 100 }),
+        ]);
+        if (cancelled) return;
+
+        const previous = history.filter(
+          (t) => t.id !== take.id && t.startedAt < take.startedAt,
+        );
+        const sentence = describeTake(take, previous);
+
+        let songTitle = "";
+        let hueSeed = 0;
+        try {
+          const song = await getSong(take.songId);
+          songTitle = song.title;
+          hueSeed = song.motifSeed;
+        } catch {
+          // The song was withdrawn since this take was recorded — the take
+          // itself still stands, just without a title or a hue family.
+        }
+        if (cancelled) return;
+
+        setState({ status: "ready", take, sentence, songTitle, hueSeed });
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setState({ status: "not-found" });
+        } else {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Something went wrong.",
+          });
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [takeId]);
+
+  return state;
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="space-y-8 pb-10">
+      <header className="flex items-center justify-between">
+        <Link
+          href="/"
+          aria-label="Back home"
+          className="flex min-h-tap min-w-tap items-center justify-center rounded-token text-display-sm text-ink-muted"
+        >
+          <span aria-hidden="true">&times;</span>
+        </Link>
+      </header>
+      {children}
+    </div>
+  );
+}
+
+export function ResultsScreen({ takeId }: { takeId: string }) {
+  const state = useResults(takeId);
+
+  if (state.status === "loading") {
+    return (
+      <Shell>
+        <section className="flex flex-1 flex-col items-center justify-center gap-4 pt-16 text-center">
+          <div className="size-40 animate-pulse rounded-full bg-dawn-mist" />
+          <p className="text-secondary text-ink-muted">Finding your results&hellip;</p>
+        </section>
+      </Shell>
+    );
+  }
+
+  if (state.status === "not-found") {
+    return (
+      <Shell>
+        <section className="flex flex-1 flex-col items-center justify-center gap-4 pt-16 text-center">
+          <p className="text-body text-ink">We couldn&rsquo;t find that session.</p>
+          <p className="text-secondary text-ink-muted">
+            It may have been on another device, or never saved.
+          </p>
+          <Link
+            href="/"
+            className="mt-2 flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action"
+          >
+            Back home
+          </Link>
+        </section>
+      </Shell>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <Shell>
+        <section className="flex flex-1 flex-col items-center justify-center gap-4 pt-16 text-center">
+          <p className="text-body text-ink">Couldn&rsquo;t load this session.</p>
+          <p className="text-secondary text-ink-muted">{state.message}</p>
+          <Link
+            href="/"
+            className="mt-2 flex min-h-tap items-center justify-center rounded-token border border-rule bg-surface px-6 py-3 text-body text-ink"
+          >
+            Back home
+          </Link>
+        </section>
+      </Shell>
+    );
+  }
+
+  return (
+    <ResultsContent
+      take={state.take}
+      sentence={state.sentence}
+      songTitle={state.songTitle}
+      hueSeed={state.hueSeed}
+    />
+  );
+}
+
+function ResultsContent({
   take,
   sentence,
   songTitle,

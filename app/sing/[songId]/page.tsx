@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { MOCK_SONGS } from "@/lib/mock/songs";
+import { ApiError, getSong } from "@/lib/api";
 import { parseSource } from "../lyricHelpers";
 import { SingScreen } from "./SingScreen";
 
@@ -13,8 +13,13 @@ export default async function SingPage({
   const { songId } = await params;
   const { source } = await searchParams;
 
-  const song = MOCK_SONGS.find((s) => s.id === songId);
-  if (!song) notFound();
+  let song;
+  try {
+    song = await getSong(songId);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) notFound();
+    throw err;
+  }
 
   return <SingScreen song={song} source={parseSource(source)} />;
 }

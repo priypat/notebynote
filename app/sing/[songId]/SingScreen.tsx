@@ -10,9 +10,17 @@
  * `mic` so this screen can be checked without a microphone — see
  * lib/audio/breathEngine.ts. Both paths push through the same render code
  * below; nothing here branches on which one is active.
+ *
+ * Each completed phrase is scored for real via lib/scoring/breathScore.ts
+ * from its own frames, and reaching the end of the song calls
+ * lib/api/'s createTake() and redirects to the real /take/[id] it returns.
+ * Exiting mid-session via the × does not yet record a "stopped-early" take
+ * — that's a real, supported completion per API_CONTRACT.md, just not
+ * wired up here yet.
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MotionConfig, motion } from "motion/react";
 import {
@@ -22,7 +30,9 @@ import {
   type BreathSource,
   type EngineState,
 } from "@/lib/audio/breathEngine";
-import type { Song } from "@/lib/types";
+import type { PhraseResult, Song, TakeDraft } from "@/lib/types";
+import { createTake } from "@/lib/api";
+import { scorePhrase } from "@/lib/scoring/breathScore";
 import { usePrefersReducedMotion } from "../../useReducedMotion";
 import { splitSustained } from "../lyricHelpers";
 import { Ridge } from "../Ridge";
@@ -30,10 +40,17 @@ import { Ridge } from "../Ridge";
 const SETTLE_SEC = 1.8;
 const PAINT_MS = 60;
 
-type Phase = "calibrating" | "waiting" | "sustaining" | "settling" | "done";
+type Phase =
+  | "calibrating"
+  | "waiting"
+  | "sustaining"
+  | "settling"
+  | "saving"
+  | "save-error";
 
 export function SingScreen({ song, source }: { song: Song; source: BreathSource }) {
   const reducedMotion = usePrefersReducedMotion();
+  const router = useRouter();
 
   const [started, setStarted] = useState(false);
   const [engineState, setEngineState] = useState<EngineState>("idle");
@@ -42,6 +59,7 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
   const [settleProgress, setSettleProgress] = useState(0);
   const [envelopeTick, setEnvelopeTick] = useState(0);
   const [counterSec, setCounterSec] = useState(0);
+  const [saveErrorMessage, setSaveErrorMessage] = useState("");
 
   const sourceRef = useRef<BreathSource>(source);
   const phaseRef = useRef<Phase>("calibrating");
@@ -50,6 +68,12 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
   const assumedTotalRef = useRef(240);
   const settleStartMsRef = useRef<number | null>(null);
   const latestFrameRef = useRef<BreathFrame | null>(null);
+  /** Every frame of the current phrase's hold, plus the settle-period tail —
+   *  what scorePhrase needs to compute a real PhraseResult. */
+  const phraseFramesRef = useRef<BreathFrame[]>([]);
+  /** One real, scored PhraseResult per phrase completed this session. */
+  const resultsRef = useRef<PhraseResult[]>([]);
+  const startedAtRef = useRef<string>("");
 
   useEffect(() => {
     // Fixtures don't need HTTPS or a mic; only fall back for a genuine mic
@@ -59,12 +83,37 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
     }
   }, []);
 
+  async function finishTake() {
+    phaseRef.current = "saving";
+    setPhase("saving");
+    breathEngine.stop();
+
+    // finishTake only runs once every phrase has settled, so this is always
+    // "finished" today — exiting mid-session via the × doesn't yet record a
+    // "stopped-early" take (see SingScreen's file comment).
+    const draft: TakeDraft = {
+      songId: song.id,
+      startedAt: startedAtRef.current,
+      endedAt: new Date().toISOString(),
+      completion: "finished",
+      phrases: resultsRef.current,
+    };
+
+    try {
+      const take = await createTake(draft);
+      router.push(`/take/${take.id}`);
+    } catch (err) {
+      phaseRef.current = "save-error";
+      setPhase("save-error");
+      setSaveErrorMessage(err instanceof Error ? err.message : "Something went wrong.");
+    }
+  }
+
   function advanceToPhrase(idx: number) {
     phraseIdxRef.current = idx;
     envelopeRef.current = [];
     if (idx >= song.phrases.length) {
-      phaseRef.current = "done";
-      breathEngine.stop();
+      void finishTake();
       return;
     }
     if (typeof sourceRef.current === "object") {
@@ -82,6 +131,9 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
     setStarted(true);
     phraseIdxRef.current = 0;
     envelopeRef.current = [];
+    phraseFramesRef.current = [];
+    resultsRef.current = [];
+    startedAtRef.current = new Date().toISOString();
     phaseRef.current = "calibrating";
     void breathEngine.start(sourceRef.current);
   }
@@ -107,6 +159,7 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
         if (frame.voiced) {
           phaseRef.current = "sustaining";
           envelopeRef.current = [];
+          phraseFramesRef.current = [];
           const phrase = song.phrases[phraseIdxRef.current];
           assumedTotalRef.current = Math.max(
             120,
@@ -115,6 +168,7 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
         }
       } else if (phaseRef.current === "sustaining") {
         envelopeRef.current.push(frame.rms);
+        phraseFramesRef.current.push(frame);
         if (envelopeRef.current.length > assumedTotalRef.current) {
           assumedTotalRef.current = Math.round(envelopeRef.current.length * 1.15);
         }
@@ -124,6 +178,10 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
           phaseRef.current = "settling";
           settleStartMsRef.current = performance.now();
         }
+      } else if (phaseRef.current === "settling") {
+        // A little trailing silence, so scorePhrase has something real to
+        // measure recoverySec from.
+        phraseFramesRef.current.push(frame);
       }
     });
 
@@ -135,6 +193,12 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
         setSettleProgress(Math.min(1, elapsed / SETTLE_SEC));
         if (elapsed >= SETTLE_SEC) {
           settleStartMsRef.current = null;
+          const finishedPhrase = song.phrases[phraseIdxRef.current];
+          if (finishedPhrase) {
+            resultsRef.current.push(
+              scorePhrase(phraseFramesRef.current, finishedPhrase.id),
+            );
+          }
           advanceToPhrase(phraseIdxRef.current + 1);
         }
       } else if (phaseRef.current !== "settling") {
@@ -238,15 +302,27 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
               Back home
             </Link>
           </section>
-        ) : phase === "done" ? (
+        ) : phase === "saving" ? (
           <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
             <p className="display text-display-sm text-ink">Nicely sung.</p>
-            <p className="text-body text-ink-muted">
-              Take all the rest you like.
-            </p>
+            <div className="size-12 animate-pulse rounded-full bg-dawn-mist" />
+            <p className="text-secondary text-ink-muted">Saving your session&hellip;</p>
+          </section>
+        ) : phase === "save-error" ? (
+          <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+            <p className="display text-display-sm text-ink">Nicely sung.</p>
+            <p className="text-body text-ink">Couldn&rsquo;t save this session.</p>
+            <p className="text-secondary text-ink-muted">{saveErrorMessage}</p>
+            <button
+              type="button"
+              onClick={() => void finishTake()}
+              className="mt-2 flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action"
+            >
+              Try again
+            </button>
             <Link
               href="/"
-              className="mt-4 flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action"
+              className="flex min-h-tap items-center justify-center rounded-token border border-rule bg-surface px-6 py-3 text-body text-ink"
             >
               Back home
             </Link>
