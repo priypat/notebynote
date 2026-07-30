@@ -35,7 +35,14 @@ export default function CallbackPage() {
     }
 
     exchangeCodeForToken(code)
-      .then(() => router.push('/spotify'))
+      .then(() => {
+        // /spotify/connect sets this before sending the user off to Spotify:
+        // it means "this login was to mint a refresh token", so land back
+        // there to display it rather than dropping into the player.
+        const setup = sessionStorage.getItem('spotify_setup_mode');
+        sessionStorage.removeItem('spotify_setup_mode');
+        router.push(setup ? '/spotify/connect' : '/spotify');
+      })
       .catch((err) => setError(err.message));
   }, [router]);
 

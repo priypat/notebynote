@@ -35,6 +35,7 @@ import {
   getStoredAccessToken,
   isTokenExpired,
   refreshAccessToken,
+  fetchDemoToken,
   logout,
 } from '@/lib/spotify/auth';
 import {
@@ -63,6 +64,12 @@ export default function Home() {
   const [activeLine, setActiveLine] = useState(-1);
   const [error, setError] = useState(null);
   const [me, setMe] = useState(null);
+  // 'demo'   — server-minted, no login shown
+  // 'stored' — from a previous interactive login on this browser
+  const [authMode, setAuthMode] = useState(null);
+  // Until the token attempt settles, show a neutral "connecting" state rather
+  // than flashing the login button at everyone for a beat on every load.
+  const [authReady, setAuthReady] = useState(false);
 
   const playerRef = useRef(null);
   const positionIntervalRef = useRef(null);
@@ -75,17 +82,79 @@ export default function Home() {
     lyricsLinesRef.current = lyricsLines;
   }, [lyricsLines]);
 
-  // --- Load token on mount ---
+  // --- Get a token on mount, without a login step if at all possible ---
+  //
+  // Order matters: the server-side demo token comes first so a configured
+  // demo never shows a login screen, even in a fresh browser or incognito.
+  // Everything after it is fallback for when setup hasn't been run.
   useEffect(() => {
-    const existing = getStoredAccessToken();
-    if (existing && !isTokenExpired()) {
-      setToken(existing);
-    } else if (existing) {
-      refreshAccessToken()
-        .then((data) => setToken(data.access_token))
-        .catch(() => setToken(null));
+    let cancelled = false;
+
+    async function acquire() {
+      // 1. No-login path — server mints one from a stored refresh token.
+      try {
+        const demo = await fetchDemoToken();
+        if (cancelled) return;
+        if (demo) {
+          setToken(demo.access_token);
+          setAuthMode('demo');
+          return;
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setError(e.message); // configured but broken — worth saying out loud
+      }
+
+      // 2. A token from a previous interactive login, still valid.
+      const existing = getStoredAccessToken();
+      if (existing && !isTokenExpired()) {
+        if (!cancelled) {
+          setToken(existing);
+          setAuthMode('stored');
+        }
+        return;
+      }
+
+      // 3. Expired, but we have a refresh token from that login.
+      if (existing) {
+        try {
+          const data = await refreshAccessToken();
+          if (!cancelled) {
+            setToken(data.access_token);
+            setAuthMode('stored');
+          }
+          return;
+        } catch {
+          /* fall through to the login button */
+        }
+      }
+
+      // 4. Nothing worked — show the login button.
+      if (!cancelled) setAuthReady(true);
     }
+
+    acquire().finally(() => {
+      if (!cancelled) setAuthReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Access tokens last an hour. Re-mint a minute early so a long demo never
+  // dies mid-song.
+  useEffect(() => {
+    if (authMode !== 'demo') return;
+    const id = setInterval(
+      () => {
+        fetchDemoToken()
+          .then((d) => d && setToken(d.access_token))
+          .catch(() => {});
+      },
+      50 * 60 * 1000,
+    );
+    return () => clearInterval(id);
+  }, [authMode]);
 
   // --- Who is this, and are they Premium? ---
   useEffect(() => {
@@ -280,14 +349,31 @@ export default function Home() {
 
   // --- Render ---
 
+  // Don't flash a login button while the silent token attempt is in flight —
+  // in the configured case it resolves to a token and no login should ever
+  // have been visible.
+  if (!token && !authReady) {
+    return (
+      <main style={styles.centered}>
+        <h1>🎤 Lung Tunes</h1>
+        <p style={{ opacity: 0.7 }}>Connecting…</p>
+      </main>
+    );
+  }
+
   if (!token) {
     return (
       <main style={styles.centered}>
         <h1>🎤 Lung Tunes</h1>
+        {error && <p style={styles.error}>{error}</p>}
         <p>Connect Spotify to search for a song and start singing.</p>
         <button style={styles.button} onClick={redirectToSpotifyAuth}>
           Log in with Spotify
         </button>
+        <p style={{ fontSize: 13, opacity: 0.7, maxWidth: 380, textAlign: 'center' }}>
+          Demoing? Run the <a href="/spotify/connect">one-time setup</a> once and
+          this screen never appears again.
+        </p>
       </main>
     );
   }
@@ -300,15 +386,21 @@ export default function Home() {
       <main style={styles.page}>
         <header style={styles.header}>
           <h1>🎤 Lung Tunes</h1>
-          <button
-            style={styles.linkButton}
-            onClick={() => {
-              logout();
-              setToken(null);
-            }}
-          >
-            Log out
-          </button>
+          {/* Pointless in demo mode — the server would just hand back another
+              token on the next load — and a stray "Log out" is exactly the
+              kind of thing that derails a live demo. */}
+          {authMode !== 'demo' && (
+            <button
+              style={styles.linkButton}
+              onClick={() => {
+                logout();
+                setToken(null);
+                setAuthMode(null);
+              }}
+            >
+              Log out
+            </button>
+          )}
         </header>
 
         {/* Diagnostics — the original gave no way to tell which of playback's
@@ -322,6 +414,9 @@ export default function Home() {
           </span>
           <span>
             device: <strong>{deviceId ? 'yes' : 'none'}</strong>
+          </span>
+          <span>
+            auth: <strong>{authMode === 'demo' ? 'no-login' : 'logged in'}</strong>
           </span>
         </div>
 

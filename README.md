@@ -121,4 +121,53 @@ you're already on a fixture (including during demo mode). There's no on-screen
 hint for this on purpose — it's for whoever's driving, not something a real
 user should ever notice or need.
 
+## Spotify — running the demo with no login step
+
+The player lives at `/spotify`. By default it asks you to log in, which is
+fine for development and wrong for a demo.
+
+**Spotify gives no way around authorizing at least once.** The Web Playback
+SDK only streams with a *user* token carrying the `streaming` scope; the
+client-credentials flow has no user attached, so it can search and read
+metadata but cannot play audio. What you *can* do is authorize once, up
+front, and never do it again.
+
+### One-time setup
+
+1. Visit `http://127.0.0.1:3000/spotify/connect`
+2. Click **Authorize once**, approve as your Premium account
+3. You land back on that page with a `SPOTIFY_REFRESH_TOKEN=...` line — copy it
+4. Paste it into `.env.local`
+5. Restart the dev server
+
+`/spotify` now goes straight to the player. No login, in any browser, including
+incognito and a fresh machine you've copied `.env.local` to. Spotify refresh
+tokens don't expire on a timer, so this holds until it's revoked or the account
+password changes. The app re-mints an access token every 50 minutes so a long
+session can't die mid-song.
+
+### Treat the refresh token like a password
+
+It grants ongoing access to that Spotify account — profile, and playback
+control. It is read from `SPOTIFY_REFRESH_TOKEN` **without** a `NEXT_PUBLIC_`
+prefix specifically so Next keeps it server-side and it never enters the
+browser bundle; only short-lived access tokens reach the client.
+
+`.env.local` is gitignored. Don't paste the token anywhere public. If it leaks,
+change the Spotify password — that revokes it.
+
+`/api/spotify/token` hands a working token to anyone who can reach it. On
+localhost that's nobody but you. **Deployed publicly it would let any visitor
+control that Spotify account**, which is why a production build refuses to
+serve it unless `SPOTIFY_DEMO_MODE=true` is set deliberately.
+
+### Still requires
+
+- **Spotify Premium** — the SDK will not stream on free, and it fails by
+  silently pausing rather than erroring.
+- Redirect URI registered as exactly `http://127.0.0.1:3000/callback`, and the
+  account added under **Users Management** in the Spotify dashboard.
+- Browse to `127.0.0.1:3000`, not `localhost:3000` — Spotify matches the
+  redirect URI literally.
+
 Stack: Next.js 15 (App Router), TypeScript, Tailwind v4, Motion.
