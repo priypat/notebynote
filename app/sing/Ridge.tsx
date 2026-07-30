@@ -14,7 +14,7 @@
  * live microphone via breathEngine.subscribe(). Nothing here knows which.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { smoothAreaPath, smoothLinePath, type Point } from "./catmullRom";
 
 const VIEW_W = 480;
@@ -141,6 +141,15 @@ export function Ridge({
 }) {
   const total = Math.max(2, assumedTotalFrames);
 
+  // Client-only: the ambient drift below uses Math.sin, which the spec
+  // doesn't guarantee bit-identical across JS engines (only +,-,*,/ and sqrt
+  // are). Node/V8 on the server and a non-V8 browser (Safari, Firefox) can
+  // disagree by an ulp, which cascades into a visibly-different path string
+  // and a false-positive hydration mismatch. Rendering nothing server-side
+  // sidesteps that instead of chasing cross-engine float determinism.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const { layerPaths, roughness } = useMemo(() => {
     const norm = envelope.map((rms) => Math.max(0, Math.min(1, rms / REF_PEAK_RMS)));
     const rough = roughnessOf(norm);
@@ -202,7 +211,7 @@ export function Ridge({
         role="img"
         aria-label="Your breath, drawn as rolling terrain"
       >
-        {LAYERS.map((layer, i) => {
+        {mounted && LAYERS.map((layer, i) => {
           const p = layerPaths[i];
           const dash = roughness > 0.45 ? "5 4" : undefined;
           return (
