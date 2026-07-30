@@ -12,15 +12,18 @@ import { synthEnvelope } from "./envelope";
  *    session; a take where the last phrase beats the first would be fiction.
  *  - Two off days (#4 and #7) where everything regresses. Both are evening
  *    sessions, and both were stopped partway. That is what a bad day looks like.
- *  - The last take scores *lower* than the one before it (56 vs 58) while
+ *  - The last take scores *lower* than the one before it (59 vs 60) while
  *    setting a new longest hold, because it's a first attempt at the hardest
  *    song. The progress screen has to handle this without reading as a setback.
  *  - Personal records at #1, #3, #5, #8, #9 — five in nine. Frequent enough to
  *    feel achievable, rare enough to mean something.
  *
- * TODO(api): breathScore is hand-set here. Once lib/scoring/breathScore.ts
- * exists, derive it from `phrases` so this fixture cannot drift away from the
- * real algorithm.
+ * breathScore is no longer hand-set — every value below is what
+ * scoreTake() from lib/scoring/breathScore.ts actually computes for that
+ * take's phrases against MOCK_PROFILE (see scripts/check-fixtures.ts, which
+ * only checks internal consistency and can't catch this fixture drifting
+ * from the real algorithm on its own). If you change the scoring formula,
+ * re-run the numbers here — nothing enforces that they stay in sync.
  */
 
 const pr = (
@@ -58,7 +61,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-08T08:12:00.000Z",
     sessionSec: 95,
     completion: "finished",
-    breathScore: 41,
+    breathScore: 43,
     isPersonalRecord: true, // first take ever
     sigilSeed: 0x2a71c4,
     phrases: [
@@ -90,7 +93,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-13T07:58:00.000Z",
     sessionSec: 92,
     completion: "finished",
-    breathScore: 47,
+    breathScore: 50,
     isPersonalRecord: true,
     sigilSeed: 0x4c9e52,
     phrases: [
@@ -122,7 +125,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-18T08:05:00.000Z",
     sessionSec: 138,
     completion: "finished",
-    breathScore: 52,
+    breathScore: 53,
     isPersonalRecord: true,
     sigilSeed: 0x6f2b90,
     phrases: [
@@ -139,7 +142,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-21T08:20:00.000Z",
     sessionSec: 141,
     completion: "finished",
-    breathScore: 51,
+    breathScore: 52,
     isPersonalRecord: false,
     sigilSeed: 0x1e7d33,
     phrases: [
@@ -157,7 +160,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-24T21:10:00.000Z",
     sessionSec: 71,
     completion: "stopped-early",
-    breathScore: 43,
+    breathScore: 40,
     isPersonalRecord: false,
     sigilSeed: 0xa04c61,
     phrases: [
@@ -172,7 +175,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-27T08:02:00.000Z",
     sessionSec: 134,
     completion: "finished",
-    breathScore: 58,
+    breathScore: 60,
     isPersonalRecord: true,
     sigilSeed: 0x35b8da,
     phrases: [
@@ -191,7 +194,7 @@ const SEEDED: Seeded[] = [
     startedAt: "2026-07-29T08:16:00.000Z",
     sessionSec: 212,
     completion: "finished",
-    breathScore: 56,
+    breathScore: 59,
     isPersonalRecord: true,
     sigilSeed: 0xc7e284,
     phrases: [

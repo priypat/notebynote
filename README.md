@@ -4,6 +4,9 @@ A mobile sing-along app that helps people working on breath control — asthma,
 COPD, long-COVID recovery — build breath support by singing to real songs. Your
 breath draws a topographic ridge as you sustain a note. Audio only; no camera.
 
+Picking this up cold? Read `HANDOFF.md` too — what's real vs. mocked, what to
+build next and in what order, and every known fragile spot, named bluntly.
+
 ```bash
 npm install
 npm run dev              # localhost:3000
@@ -13,11 +16,25 @@ npm run dev -- -H 0.0.0.0   # reachable from a phone on the same wifi
 `/` is the home screen — greeting, last session, and the song list. The token
 specimen moved to `/dev/tokens`.
 
+## The three seams
+
+Three boundaries in this codebase are where a real backend, a real
+microphone, and a real scoring service each slot in without anything above
+them changing. If you're extending this app, work through the seam, not
+around it.
+
+| Seam | What it hides | What calls it |
+|---|---|---|
+| `lib/api/` | Whether data comes from `lib/mock/` + `localStorage` or a real HTTP backend (`NEXT_PUBLIC_USE_MOCKS`). Every function has the exact signature and shape `API_CONTRACT.md` documents. | Every screen under `app/`. No component calls `fetch` directly — verified in `HANDOFF.md` §4. |
+| `lib/audio/breathEngine.ts` | Whether frames come from a live microphone or a replayed fixture. Both push through the same `FrameBuilder`, so a screen can't tell which is running. | The sing screen and the onboarding calibration step. No component touches `AudioContext` or `getUserMedia` directly — same audit. |
+| `lib/scoring/breathScore.ts` | The actual Breath Score math. Zero imports, so it's a straight copy-paste into a backend service — port it, don't reimplement it. | `lib/api/takes.ts`'s `createTake()`, and the results screen's `describeTake()`. |
+
 ## Where things live
 
 | Path | What |
 |---|---|
 | `CLAUDE.md` | The constitution. Read it before changing anything. |
+| `HANDOFF.md` | What's real vs. mocked, what to build next, known fragile spots. |
 | `design-tokens.md` | Visual direction and the reasoning behind each token. |
 | `API_CONTRACT.md` | The backend handoff — every route, shape, and error case. |
 | `app/globals.css` | Single source of truth for color, type, spacing. |
@@ -26,11 +43,13 @@ specimen moved to `/dev/tokens`.
 | `lib/mock/` | Hand-authored songs, a nine-take history, one profile. |
 | `lib/audio/breathEngine.ts` | The only place that may touch `AudioContext` / `getUserMedia`. |
 | `lib/scoring/breathScore.ts` | Pure, zero imports, portable server-side. |
+| `lib/demo/` | `?demo=1` — see "Demo mode" below. |
 
 ```bash
-npm run check            # both checks below
+npm run check            # fixtures + audio + tests, all three below
 npm run check:fixtures   # asserts the mock data agrees with itself
 npm run check:audio      # asserts each breath fixture still behaves as described
+npm run test             # Vitest — lib/scoring/breathScore.test.ts
 npm run lint
 npm run build
 ```

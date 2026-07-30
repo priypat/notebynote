@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { SpecimenControls } from "@/components/SpecimenControls";
 
 /**
@@ -8,7 +9,15 @@ import { SpecimenControls } from "@/components/SpecimenControls";
  * The hex strings below are label *content*, not styling. Every rendered color
  * comes from a token utility (bg-ink, text-ink-muted, …). No component in this
  * app styles anything with a literal hex value.
+ *
+ * 404s in a production build, same as /dev/audio — a dev surface should never
+ * be reachable by someone poking at URLs on a deployed demo.
  */
+
+export const metadata = {
+  title: "Token specimen — dev",
+  robots: { index: false, follow: false },
+};
 
 const ATMOSPHERE = [
   { token: "--dawn-peach", hex: "#F7C59F", swatch: "bg-dawn-peach", role: "lowest gradient stop, warmest ridge band" },
@@ -77,6 +86,7 @@ function Swatch({
 }
 
 export default function TokenSpecimen() {
+  if (process.env.NODE_ENV === "production") notFound();
   return (
     <main className="space-y-9 pb-16">
       <header className="space-y-4">

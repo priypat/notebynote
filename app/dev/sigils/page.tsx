@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { generateSigil, type SigilInput } from "@/lib/sigil/generate";
 import { Sigil } from "@/components/Sigil";
 
@@ -6,7 +7,15 @@ import { Sigil } from "@/components/Sigil";
  * Math.random() so this page renders identically every load. Enough spread
  * across all six parameters to eyeball whether the visual variety is
  * actually there.
+ *
+ * 404s in a production build, same as /dev/audio — a dev surface should
+ * never be reachable by someone poking at URLs on a deployed demo.
  */
+
+export const metadata = {
+  title: "Sigils — dev",
+  robots: { index: false, follow: false },
+};
 const DEV_SIGILS: SigilInput[] = Array.from({ length: 24 }, (_, i) => ({
   seed: 0x1000 + i * 0x2f13,
   longestHoldSec: 2 + (i % 6) * 2, // 2..12s
@@ -18,6 +27,7 @@ const DEV_SIGILS: SigilInput[] = Array.from({ length: 24 }, (_, i) => ({
 }));
 
 export default function DevSigilsPage() {
+  if (process.env.NODE_ENV === "production") notFound();
   return (
     <main className="space-y-6 pb-16">
       <header className="space-y-2">
