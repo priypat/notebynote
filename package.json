@@ -9,7 +9,8 @@
     "lint": "eslint",
     "check:fixtures": "tsx scripts/check-fixtures.ts",
     "check:audio": "tsx scripts/check-audio.ts",
-    "check": "npm run check:fixtures && npm run check:audio",
+    "check": "npm run check:fixtures && npm run check:audio && npm run test",
+    "test": "vitest run",
     "dev:https": "next dev --experimental-https"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "eslint-config-next": "15.5.22",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

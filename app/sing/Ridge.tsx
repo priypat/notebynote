@@ -21,8 +21,10 @@ const VIEW_W = 480;
 const VIEW_H = 320;
 const BASELINE_Y = VIEW_H - 6;
 
-/** RMS this loud or louder fills a layer's full amplitude range. */
-const REF_PEAK_RMS = 0.1;
+/** RMS this loud or louder fills a layer's full amplitude range. Exported so
+ *  a caller holding an already-normalized 0..1 envelope (e.g. a stored
+ *  PhraseResult.envelope) can rescale it back before passing it in. */
+export const REF_PEAK_RMS = 0.1;
 
 type Layer = {
   key: string;
