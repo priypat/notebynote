@@ -48,6 +48,8 @@ import {
   getLyrics,
   parseSyncedLyrics,
 } from '@/lib/spotify/api';
+import { lyricsToPhrases } from '@/lib/spotify/lyricsToPhrases';
+import { MOCK_SONGS } from '@/lib/mock';
 
 export default function Home() {
   const [token, setToken] = useState(null);
@@ -60,6 +62,9 @@ export default function Home() {
   const [lyricsLines, setLyricsLines] = useState([]);
   const [plainLyrics, setPlainLyrics] = useState(null);
   const [lyricsStatus, setLyricsStatus] = useState('idle');
+  // The Phase 1 bridge's output for whatever track is selected — null while
+  // loading, then either a real phrase map or null-because-no-usable-lyrics.
+  const [phraseMap, setPhraseMap] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeLine, setActiveLine] = useState(-1);
   const [error, setError] = useState(null);
@@ -281,6 +286,7 @@ export default function Home() {
     setActiveLine(-1);
     setError(null);
     setLyricsStatus('loading');
+    setPhraseMap(null);
 
     if (track.artists?.[0]?.id) {
       getArtist(track.artists[0].id, token).then(setArtistInfo).catch(() => {});
@@ -292,8 +298,12 @@ export default function Home() {
       .then((lyrics) => {
         if (!lyrics) return setLyricsStatus('none');
         if (lyrics.synced) {
-          setLyricsLines(parseSyncedLyrics(lyrics.synced));
+          const parsed = parseSyncedLyrics(lyrics.synced);
+          setLyricsLines(parsed);
           setLyricsStatus('synced');
+          // The Phase 1 bridge: not every synced song sustains anything long
+          // enough to coach breath on, so this can still come back null.
+          setPhraseMap(lyricsToPhrases(parsed));
         } else if (lyrics.plain) {
           setPlainLyrics(lyrics.plain);
           setLyricsStatus('plain');
@@ -363,17 +373,24 @@ export default function Home() {
 
   if (!token) {
     return (
-      <main style={styles.centered}>
+      <main style={styles.page}>
         <h1>🎤 Lung Tunes</h1>
         {error && <p style={styles.error}>{error}</p>}
-        <p>Connect Spotify to search for a song and start singing.</p>
-        <button style={styles.button} onClick={redirectToSpotifyAuth}>
-          Log in with Spotify
-        </button>
-        <p style={{ fontSize: 13, opacity: 0.7, maxWidth: 380, textAlign: 'center' }}>
-          Demoing? Run the <a href="/spotify/connect">one-time setup</a> once and
-          this screen never appears again.
-        </p>
+        {/* Made for breath works with zero Spotify account — the curated
+            songs already have a real, hand-authored phrase map and a fully
+            working sing session behind them. Spotify is an upgrade on top
+            of this, never the only way in. */}
+        <CuratedShelf />
+        <div style={{ ...styles.centered, height: 'auto', padding: '24px 0' }}>
+          <p>Connect Spotify for more songs to search and sing.</p>
+          <button style={styles.button} onClick={redirectToSpotifyAuth}>
+            Log in with Spotify
+          </button>
+          <p style={{ fontSize: 13, opacity: 0.7, maxWidth: 380, textAlign: 'center' }}>
+            Demoing? Run the <a href="/spotify/connect">one-time setup</a> once and
+            this screen never appears again.
+          </p>
+        </div>
       </main>
     );
   }
@@ -430,6 +447,9 @@ export default function Home() {
 
         {error && <p style={styles.error}>{error}</p>}
 
+        <CuratedShelf />
+
+        <h2 style={styles.shelfTitle}>Search Spotify</h2>
         <form onSubmit={handleSearch} style={styles.searchForm}>
           <input
             style={styles.input}
@@ -476,6 +496,24 @@ export default function Home() {
                 {artistInfo?.genres?.length > 0 && (
                   <p style={{ fontSize: 13, opacity: 0.7 }}>{artistInfo.genres.join(', ')}</p>
                 )}
+
+                {/* The "breath fit" line — the one honest sentence the plan
+                    asks for. Never blocks singing either way: Play works
+                    regardless of what this says. */}
+                {lyricsStatus === 'loading' ? (
+                  <p style={styles.fitNeutral}>Checking this song&rsquo;s breath fit…</p>
+                ) : phraseMap ? (
+                  <p style={styles.fitGood}>
+                    {phraseMap.phrases.length} long phrase{phraseMap.phrases.length === 1 ? '' : 's'},
+                    about {phraseMap.longestHoldSec}s each — {phraseMap.difficulty}.
+                  </p>
+                ) : (
+                  <p style={styles.fitNeutral}>
+                    No synced breath map for this song yet — go ahead and sing it, it just won&rsquo;t
+                    coach your held notes this time.
+                  </p>
+                )}
+
                 <button style={styles.button} onClick={handlePlayPause} disabled={!playerReady}>
                   {isPlaying ? 'Pause' : 'Play'}
                 </button>
@@ -495,7 +533,7 @@ export default function Home() {
                 <p style={{ opacity: 0.6 }}>
                   {lyricsStatus === 'loading'
                     ? 'Looking for lyrics…'
-                    : 'No lyrics found for this track.'}
+                    : "No lyrics on screen for this one — you know the words, so sing away."}
                 </p>
               )}
             </div>
@@ -506,8 +544,41 @@ export default function Home() {
   );
 }
 
+/**
+ * "Made for breath" — the curated songs, always available with no Spotify
+ * account. Each already has a real, hand-authored phrase map and a fully
+ * working sing session at /sing/[id]; nothing extra to wire here.
+ */
+function CuratedShelf() {
+  return (
+    <section>
+      <h2 style={styles.shelfTitle}>Made for breath</h2>
+      <div style={styles.shelfRow}>
+        {MOCK_SONGS.map((song) => (
+          <a key={song.id} href={`/sing/${song.id}`} style={styles.shelfCard}>
+            <strong style={{ fontSize: 15 }}>{song.title}</strong>
+            <span style={{ fontSize: 13, opacity: 0.7 }}>{song.artist}</span>
+            <span style={{ fontSize: 13, opacity: 0.7 }}>
+              longest hold {song.longestHoldSec}s · {song.difficulty}
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const styles = {
   page: { maxWidth: 640, margin: '0 auto', padding: 24, fontFamily: 'sans-serif' },
+  shelfTitle: { fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.6, margin: '20px 0 10px' },
+  shelfRow: { display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 },
+  shelfCard: {
+    display: 'flex', flexDirection: 'column', gap: 2, minWidth: 160, flexShrink: 0,
+    padding: 14, borderRadius: 10, textDecoration: 'none', color: 'inherit',
+    background: 'linear-gradient(135deg, #fdba74, #bef264)',
+  },
+  fitGood: { fontSize: 13, color: '#166534', margin: '4px 0' },
+  fitNeutral: { fontSize: 13, opacity: 0.65, margin: '4px 0' },
   centered: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'sans-serif', gap: 12 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   diag: { display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, opacity: 0.75, padding: '8px 0', borderBottom: '1px solid #eee' },

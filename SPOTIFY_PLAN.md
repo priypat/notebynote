@@ -108,6 +108,33 @@ shifts.
 
 ---
 
+## Status
+
+**Phase 1 (lyrics -> phrase map) and Phase 2 (picker UI) are built.**
+
+- `lib/spotify/lyricsToPhrases.js` — pure, tested (5 cases) against real
+  captured LRCLIB data. Derives the same `{lyric, startSec, holdStartSec,
+  targetHoldSec}` shape `lib/types.ts` already runs on, plus a difficulty
+  band, from any synced-lyrics track.
+- `/spotify` is now the picker: a "Made for breath" shelf (the 3 curated
+  songs, real working sing sessions, needs no Spotify account at all) above
+  search. Selecting a Spotify track shows the phrase-fit line — "3 long
+  phrases, about 6s each — steady" — or, gracefully, "No synced breath map
+  for this song yet — go ahead and sing it, it just won't coach your held
+  notes this time." Play is never blocked by the lyrics answer either way.
+
+**Phase 3 (real-time breath scoring against live Spotify playback) is NOT
+built.** This is a materially bigger piece than it looks: the existing sing
+screen advances phrases by detecting voicing through the microphone; singing
+along to a *playing* Spotify track needs phrase advance driven by playback
+position instead, running alongside the mic-based scoring, not replacing it.
+Needs its own design pass rather than a quick wire-up. Curated songs remain
+the only path to a full scored take today; Spotify tracks are pick-and-play
+with an honest breath-fit preview, not yet a scored session.
+
+**Phase 4 (from-your-library shelf)** needs new OAuth scopes
+(`user-library-read`/`user-top-read`) and a re-auth; not started.
+
 ## Open questions
 
 1. **Is Premium acceptable as a requirement for the Spotify path?** If the
