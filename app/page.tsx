@@ -201,6 +201,13 @@ export default function HomePage() {
         )}
       </section>
 
+      <Link
+        href="/spotify"
+        className="flex min-h-tap items-center justify-center rounded-token border border-rule bg-surface px-6 py-4 text-body text-ink"
+      >
+        Sing from Spotify
+      </Link>
+
       <BottomNav />
     </main>
   );
