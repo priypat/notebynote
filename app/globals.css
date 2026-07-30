@@ -199,3 +199,130 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   EXPLORATION — candidate home-screen directions (Option A / B / C)
+   --------------------------------------------------------------------------
+   Throwaway. Delete this whole block and app/dev/home-options/ once a
+   direction is chosen; promote only the winner into :root above.
+
+   Each option re-points the SAME functional tokens the app already uses, so
+   the option components below are built from ordinary utilities (bg-bg,
+   text-ink, bg-action…) and inherit any chosen palette for free — no
+   component knows which option it's rendering.
+
+   Scoped to [data-ui] on a wrapper, with [data-mode="dusk"] for the evening
+   variant, deliberately independent of the global [data-theme] system so
+   this exploration can't disturb the shipped themes.
+
+   Every text/background pairing here is verified by
+   `npm run check:contrast` — 4.5:1 floor, no exceptions.
+   ========================================================================== */
+
+@theme inline {
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-card-a: var(--card-a);
+  --color-card-b: var(--card-b);
+  --color-card-c: var(--card-c);
+  --color-on-hero: var(--on-hero);
+}
+
+/* --- Option A: Warm Signal — evolution. Warm neutrals + one coral action. */
+[data-ui="a"] {
+  --bg: #fff8f0;
+  --surface: #ffffff;
+  --ink: #23201d;
+  --ink-muted: #5c534a;
+  --action: #b8431f;
+  --on-action: #ffffff;
+  --rule: #e6dbcd;
+  --accent: #b8431f;
+  --on-accent: #ffffff;
+  --accent-soft: #f5b73d;
+  --card-a: #f5b73d;
+  --card-b: #f0906b;
+  --card-c: #e8c4a0;
+  --hero: linear-gradient(135deg, #ff8a5c 0%, #f5b73d 55%, #ffd9a8 100%);
+  --on-hero: #23201d;
+}
+[data-ui="a"][data-mode="dusk"] {
+  --bg: #1b1815;
+  --surface: #26221e;
+  --ink: #fbf6f0;
+  --ink-muted: #c8bdb1;
+  --action: #ff8a5c;
+  --on-action: #1b1815;
+  --rule: #3a332c;
+  --accent: #ff8a5c;
+  --on-accent: #1b1815;
+  --accent-soft: #f5b73d;
+  --hero: linear-gradient(135deg, #c2410c 0%, #b8431f 50%, #7c2d12 100%);
+  --on-hero: #fbf6f0;
+}
+
+/* --- Option B: Color Blocks — saturated tiles, near-black dusk. */
+[data-ui="b"] {
+  --bg: #faf7f2;
+  --surface: #ffffff;
+  --ink: #1a1a1a;
+  --ink-muted: #57534e;
+  --action: #1a1a1a;
+  --on-action: #ffffff;
+  --rule: #e3ddd4;
+  --accent: #f5a524;
+  --on-accent: #1a1a1a;
+  --accent-soft: #ffe9c2;
+  --card-a: #f5a524;
+  --card-b: #5cc8f0;
+  --card-c: #c4a5f0;
+  --hero: none;
+}
+[data-ui="b"][data-mode="dusk"] {
+  --bg: #111111;
+  --surface: #1c1c1c;
+  --ink: #fafafa;
+  --ink-muted: #b5b5b5;
+  --action: #f5a524;
+  --on-action: #111111;
+  --rule: #2e2e2e;
+  --accent: #f5a524;
+  --on-accent: #111111;
+  --accent-soft: #3a2f18;
+  --hero: none;
+  --on-hero: #fafafa;
+}
+
+/* --- Option C: Citrus Sunrise — vivid, deep-teal dusk (never purple). */
+[data-ui="c"] {
+  --bg: #fdfaf4;
+  --surface: #ffffff;
+  --ink: #14302e;
+  --ink-muted: #4a5f5c;
+  --action: #c2410c;
+  --on-action: #ffffff;
+  --rule: #dfe6e0;
+  --accent: #c2410c;
+  --on-accent: #ffffff;
+  --accent-soft: #bef264;
+  --card-a: #fdba74;
+  --card-b: #bef264;
+  --card-c: #7dd3fc;
+  --hero: linear-gradient(160deg, #fb923c 0%, #fdba74 40%, #bef264 100%);
+  --on-hero: #14302e;
+}
+[data-ui="c"][data-mode="dusk"] {
+  --bg: #0f1f21;
+  --surface: #172c2e;
+  --ink: #f2fbf8;
+  --ink-muted: #a9c4bf;
+  --action: #bef264;
+  --on-action: #0f1f21;
+  --rule: #24403f;
+  --accent: #bef264;
+  --on-accent: #0f1f21;
+  --accent-soft: #1f3a33;
+  --hero: linear-gradient(160deg, #14532d 0%, #166534 45%, #3f6212 100%);
+  --on-hero: #f2fbf8;
+}

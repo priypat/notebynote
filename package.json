@@ -9,9 +9,10 @@
     "lint": "eslint",
     "check:fixtures": "tsx scripts/check-fixtures.ts",
     "check:audio": "tsx scripts/check-audio.ts",
-    "check": "npm run check:fixtures && npm run check:audio && npm run test",
+    "check": "npm run check:fixtures && npm run check:audio && npm run check:contrast && npm run test",
     "test": "vitest run",
-    "dev:https": "next dev --experimental-https"
+    "dev:https": "next dev --experimental-https",
+    "check:contrast": "tsx scripts/check-contrast.ts"
   },
   "dependencies": {
     "motion": "^12.43.0",
