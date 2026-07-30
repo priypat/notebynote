@@ -19,5 +19,12 @@ export default async function TakePage({
   const sentence = describeTake(take, previous);
   const song = MOCK_SONGS.find((s) => s.id === take.songId);
 
-  return <ResultsScreen take={take} sentence={sentence} songTitle={song?.title ?? ""} />;
+  return (
+    <ResultsScreen
+      take={take}
+      sentence={sentence}
+      songTitle={song?.title ?? ""}
+      hueSeed={song?.motifSeed ?? 0}
+    />
+  );
 }
