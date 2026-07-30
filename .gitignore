@@ -33,6 +33,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# Belt and braces: the Spotify starter ships a .env.local.example that has a
+# real Client ID pasted into it, so it must never be committed. `.env*` above
+# already covers it; this is here so the intent is explicit and survives
+# anyone loosening that pattern.
+.env.local.example
+**/.env.local.example
 
 # vercel
 .vercel
