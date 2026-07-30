@@ -126,9 +126,17 @@ export default function HomePage() {
       {/* ---- last session summary, or a first-time invitation ---- */}
       {latest ? (
         <section className="rounded-token-lg bg-surface p-6 shadow-soft">
-          <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
-            Your last session
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
+              Your last session
+            </p>
+            <Link
+              href="/progress"
+              className="flex min-h-tap items-center text-secondary text-ink-muted underline"
+            >
+              See your progress
+            </Link>
+          </div>
           <p className="numeral text-display-lg text-ink">{latest.breathScore}</p>
           <p className="mt-1 text-body text-ink-muted">{describeTake(latest, previous)}</p>
         </section>
