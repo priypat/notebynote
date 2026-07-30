@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getSongs, getTakes } from "@/lib/api";
 import type { Take } from "@/lib/types";
+import { BottomNav } from "@/components/BottomNav";
 import { SigilCollection } from "./SigilCollection";
 import { TrendChart } from "./TrendChart";
 
@@ -45,14 +46,7 @@ function useProgressData(): LoadState {
 
 function Header() {
   return (
-    <header className="flex items-center justify-between">
-      <Link
-        href="/"
-        aria-label="Back home"
-        className="flex min-h-tap min-w-tap items-center justify-center rounded-token text-display-sm text-ink-muted"
-      >
-        <span aria-hidden="true">&times;</span>
-      </Link>
+    <header>
       <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
         Your progress
       </p>
@@ -66,7 +60,7 @@ export function ProgressScreen() {
 
   if (state.status === "loading") {
     return (
-      <main className="space-y-6 pb-16">
+      <main className="space-y-6 pb-24">
         <Header />
         <div className="h-11 animate-pulse rounded-token bg-dawn-mist" />
         <div className="grid grid-cols-4 gap-3">
@@ -74,13 +68,14 @@ export function ProgressScreen() {
             <div key={i} className="aspect-square animate-pulse rounded-token-lg bg-dawn-mist" />
           ))}
         </div>
+        <BottomNav />
       </main>
     );
   }
 
   if (state.status === "error") {
     return (
-      <main className="space-y-6 pb-16">
+      <main className="space-y-6 pb-24">
         <Header />
         <div className="space-y-3 text-center">
           <p className="text-body text-ink">Couldn&rsquo;t load your progress right now.</p>
@@ -92,13 +87,14 @@ export function ProgressScreen() {
             Try again
           </button>
         </div>
+        <BottomNav />
       </main>
     );
   }
 
   if (state.takes.length === 0) {
     return (
-      <main className="space-y-6 pb-16">
+      <main className="space-y-6 pb-24">
         <Header />
         <section className="flex flex-col items-center gap-4 rounded-token-lg border border-rule bg-surface p-8 text-center">
           <p className="text-body text-ink">Nothing here yet.</p>
@@ -113,12 +109,13 @@ export function ProgressScreen() {
             Find a song
           </Link>
         </section>
+        <BottomNav />
       </main>
     );
   }
 
   return (
-    <main className="space-y-6 pb-16">
+    <main className="space-y-6 pb-24">
       <Header />
 
       <div className="flex gap-1 rounded-token border border-rule bg-surface p-1">
@@ -149,6 +146,8 @@ export function ProgressScreen() {
       ) : (
         <TrendChart takes={state.takes} />
       )}
+
+      <BottomNav />
     </main>
   );
 }

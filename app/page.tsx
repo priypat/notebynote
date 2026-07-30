@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getProfile, getSongs, getTakes } from "@/lib/api";
 import { describeTake } from "@/lib/scoring/breathScore";
 import type { Profile, Song, Take } from "@/lib/types";
+import { BottomNav } from "@/components/BottomNav";
 
 function useGreetingWord(): string {
   // Computed client-only, after mount — new Date() during SSR would be the
@@ -71,22 +73,35 @@ function HeaderWash() {
   );
 }
 
+const LOADING_SHELL = (
+  <main className="space-y-8 pb-10">
+    <HeaderWash />
+    <div className="space-y-2">
+      <div className="h-8 w-2/3 animate-pulse rounded-token bg-dawn-mist" />
+      <div className="h-5 w-1/2 animate-pulse rounded-token bg-dawn-mist" />
+    </div>
+    <div className="h-28 animate-pulse rounded-token-lg bg-dawn-mist" />
+    <div className="h-14 animate-pulse rounded-token bg-dawn-mist" />
+  </main>
+);
+
 export default function HomePage() {
   const greetingWord = useGreetingWord();
   const state = useHomeData();
+  const router = useRouter();
 
-  if (state.status === "loading") {
-    return (
-      <main className="space-y-8 pb-10">
-        <HeaderWash />
-        <div className="space-y-2">
-          <div className="h-8 w-2/3 animate-pulse rounded-token bg-dawn-mist" />
-          <div className="h-5 w-1/2 animate-pulse rounded-token bg-dawn-mist" />
-        </div>
-        <div className="h-28 animate-pulse rounded-token-lg bg-dawn-mist" />
-        <div className="h-14 animate-pulse rounded-token bg-dawn-mist" />
-      </main>
-    );
+  // First-launch gate: a profile with no measured baseline hasn't been
+  // through onboarding yet. Nothing else in the app currently redirects
+  // here on its own — see HANDOFF.md.
+  const needsOnboarding =
+    state.status === "ready" && state.profile.baselineMptMeasuredAt === null;
+
+  useEffect(() => {
+    if (needsOnboarding) router.replace("/welcome");
+  }, [needsOnboarding, router]);
+
+  if (state.status === "loading" || needsOnboarding) {
+    return LOADING_SHELL;
   }
 
   if (state.status === "error") {
@@ -108,9 +123,10 @@ export default function HomePage() {
   }
 
   const { profile, songs, latest, previous } = state;
+  const latestSong = latest ? songs.find((s) => s.id === latest.songId) : undefined;
 
   return (
-    <main className="space-y-8 pb-10">
+    <main className="space-y-8 pb-24">
       {/* ---- atmosphere: a header wash, never behind text ---- */}
       <HeaderWash />
 
@@ -128,7 +144,7 @@ export default function HomePage() {
         <section className="rounded-token-lg bg-surface p-6 shadow-soft">
           <div className="flex items-start justify-between gap-4">
             <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
-              Your last session
+              {latestSong ? latestSong.title : "Your last session"}
             </p>
             <Link
               href="/progress"
@@ -185,12 +201,7 @@ export default function HomePage() {
         )}
       </section>
 
-      <Link
-        href="/welcome"
-        className="flex min-h-tap items-center justify-center text-secondary text-ink-muted underline"
-      >
-        Redo onboarding
-      </Link>
+      <BottomNav />
     </main>
   );
 }

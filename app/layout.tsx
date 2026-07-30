@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Figtree } from "next/font/google";
 import { BROWSER_CHROME } from "@/lib/tokens";
+import { ThemeSync } from "./ThemeSync";
 import "./globals.css";
 
 // Display — high-contrast serif. Variable, so the SOFT / WONK / opsz axes stay
@@ -46,6 +47,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${fraunces.variable} ${figtree.variable} antialiased`}>
+        <ThemeSync />
         {/* Portrait-first shell: phone-width column, centred on anything wider.
             Safe-area padding for notches and home indicators. */}
         <div className="mx-auto min-h-dvh w-full max-w-[480px] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">

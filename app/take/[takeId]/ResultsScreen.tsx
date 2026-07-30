@@ -330,6 +330,13 @@ function ResultsContent({
         </section>
 
         <Link
+          href={`/sing/${take.songId}`}
+          className="flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action"
+        >
+          Sing this again
+        </Link>
+
+        <Link
           href="/progress"
           className="flex min-h-tap items-center justify-center rounded-token border border-rule bg-surface px-6 py-3 text-body text-ink"
         >

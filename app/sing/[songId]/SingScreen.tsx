@@ -14,9 +14,16 @@
  * Each completed phrase is scored for real via lib/scoring/breathScore.ts
  * from its own frames, and reaching the end of the song calls
  * lib/api/'s createTake() and redirects to the real /take/[id] it returns.
- * Exiting mid-session via the × does not yet record a "stopped-early" take
- * — that's a real, supported completion per API_CONTRACT.md, just not
- * wired up here yet.
+ * Exiting mid-session via the × saves whatever phrases were actually
+ * completed as a "stopped-early" take (a real, supported completion per
+ * API_CONTRACT.md) rather than discarding them — unless nothing was sung
+ * yet, in which case there's nothing to save and it just leaves.
+ *
+ * Mic denial during a REAL session never falls back to a fixture. A
+ * fixture substitute would score and save a fabricated, indistinguishable
+ * "performance" into someone's real history — that's an integrity problem,
+ * not a convenience. (Demo mode and the onboarding calibration are
+ * different: neither pretends to be a scored real performance.)
  */
 
 import Link from "next/link";
@@ -91,6 +98,8 @@ export function SingScreen({
   /** One real, scored PhraseResult per phrase completed this session. */
   const resultsRef = useRef<PhraseResult[]>([]);
   const startedAtRef = useRef<string>("");
+  /** So a "try again" after a save error retries the same kind of finish. */
+  const lastCompletionRef = useRef<TakeDraft["completion"]>("finished");
 
   useEffect(() => {
     // Fixtures don't need HTTPS or a mic; only fall back for a genuine mic
@@ -100,19 +109,17 @@ export function SingScreen({
     }
   }, []);
 
-  async function finishTake() {
+  async function finishTake(completion: TakeDraft["completion"] = "finished") {
+    lastCompletionRef.current = completion;
     phaseRef.current = "saving";
     setPhase("saving");
     breathEngine.stop();
 
-    // finishTake only runs once every phrase has settled, so this is always
-    // "finished" today — exiting mid-session via the × doesn't yet record a
-    // "stopped-early" take (see SingScreen's file comment).
     const draft: TakeDraft = {
       songId: song.id,
       startedAt: startedAtRef.current,
       endedAt: new Date().toISOString(),
-      completion: "finished",
+      completion,
       phrases: resultsRef.current,
     };
 
@@ -168,6 +175,21 @@ export function SingScreen({
     void breathEngine.start(sourceRef.current);
   }
 
+  /** Leaving mid-song saves whatever was actually sung as "stopped-early"
+   *  rather than discarding it — but only if there's something to save. */
+  function handleExit(e: React.MouseEvent) {
+    if (
+      !started ||
+      resultsRef.current.length === 0 ||
+      phase === "saving" ||
+      phase === "save-error"
+    ) {
+      return; // nothing sung yet (or already mid-save) — the plain Link exits normally
+    }
+    e.preventDefault();
+    void finishTake("stopped-early");
+  }
+
   /** The keyboard rescue and demo mode both land here: keep the current
    *  phrase and everything already scored, just swap the input source. */
   function handleSwitchToFixture() {
@@ -202,11 +224,6 @@ export function SingScreen({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [started]);
-
-  function handleUseFixtureInstead() {
-    sourceRef.current = { fixture: "steady-12s", loop: false };
-    handleBegin();
-  }
 
   useEffect(() => {
     if (!started) return;
@@ -320,6 +337,7 @@ export function SingScreen({
         <header className="flex items-center justify-between">
           <Link
             href="/"
+            onClick={handleExit}
             aria-label="Exit singing"
             className="flex min-h-tap min-w-tap items-center justify-center rounded-token text-display-sm text-ink-muted"
           >
@@ -345,17 +363,17 @@ export function SingScreen({
         ) : engineState === "denied" ? (
           <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
             <p className="text-body text-ink">No microphone, no problem.</p>
-            <p className="text-secondary text-ink-muted">
-              Nothing was recorded. You can turn it back on in your browser
-              settings whenever you like.
+            <p className="max-w-[24rem] text-secondary text-ink-muted">
+              Nothing was recorded. Turn it back on in your browser&rsquo;s
+              site settings whenever you&rsquo;re ready, then come back — we
+              won&rsquo;t ask again on our own.
             </p>
-            <button
-              type="button"
-              onClick={handleUseFixtureInstead}
+            <Link
+              href="/"
               className="mt-2 flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action"
             >
-              Use a sample breath instead
-            </button>
+              Back home
+            </Link>
           </section>
         ) : engineState === "error" ? (
           <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
@@ -369,18 +387,22 @@ export function SingScreen({
           </section>
         ) : phase === "saving" ? (
           <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <p className="display text-display-sm text-ink">Nicely sung.</p>
+            <p className="display text-display-sm text-ink">
+              {lastCompletionRef.current === "finished" ? "Nicely sung." : "Got it."}
+            </p>
             <div className="size-12 animate-pulse rounded-full bg-dawn-mist" />
             <p className="text-secondary text-ink-muted">Saving your session&hellip;</p>
           </section>
         ) : phase === "save-error" ? (
           <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <p className="display text-display-sm text-ink">Nicely sung.</p>
+            <p className="display text-display-sm text-ink">
+              {lastCompletionRef.current === "finished" ? "Nicely sung." : "Got it."}
+            </p>
             <p className="text-body text-ink">Couldn&rsquo;t save this session.</p>
             <p className="text-secondary text-ink-muted">{saveErrorMessage}</p>
             <button
               type="button"
-              onClick={() => void finishTake()}
+              onClick={() => void finishTake(lastCompletionRef.current)}
               className="mt-2 flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action"
             >
               Try again
