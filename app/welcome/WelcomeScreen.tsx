@@ -42,8 +42,14 @@ type CalPhase =
   | "saving"
   | "save-error";
 
-export function WelcomeScreen({ source }: { source: BreathSource }) {
-  const [step, setStep] = useState<Step>("intro1");
+export function WelcomeScreen({
+  source,
+  initialStep = "intro1",
+}: {
+  source: BreathSource;
+  initialStep?: Step;
+}) {
+  const [step, setStep] = useState<Step>(initialStep);
   const [calPhase, setCalPhase] = useState<CalPhase>("start");
   const [engineState, setEngineState] = useState<EngineState>("idle");
   const [counterSec, setCounterSec] = useState(0);
