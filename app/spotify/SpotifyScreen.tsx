@@ -1,10 +1,13 @@
 "use client";
 
 /**
- * Sing from Spotify — the picker + player, restyled to match the rest of the
- * app (real tokens, real components) instead of the starter's inline styles.
- * Auth/SDK wiring is unchanged from the starter; only presentation and the
- * lyrics-loading logic changed here.
+ * The single "Start singing" destination: search Spotify or pick a curated
+ * "Made for breath" song, then a pause-before-you-start screen (matching
+ * app/sing/[songId]/SingScreen.tsx's own not-started beat), then playback +
+ * lyrics. Three steps in one component — "browse" | "ready" | "playing" —
+ * because Spotify tracks have no Song/phrases record in lib/api for a real
+ * /sing/[id] route to key off of; a curated tile still links straight to
+ * that real route unchanged.
  */
 
 import Link from "next/link";
@@ -72,9 +75,7 @@ declare global {
   }
 }
 
-function formatHold(sec: number): string {
-  return Number.isInteger(sec) ? `${sec}s` : `${sec.toFixed(1)}s`;
-}
+type Step = "browse" | "ready" | "playing";
 
 export function SpotifyScreen() {
   const [token, setToken] = useState<string | null>(null);
@@ -84,7 +85,9 @@ export function SpotifyScreen() {
   const [playerReady, setPlayerReady] = useState(false);
   const [me, setMe] = useState<{ product: string } | null>(null);
 
+  const [step, setStep] = useState<Step>("browse");
   const [query, setQuery] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
   const [results, setResults] = useState<SpotifyTrack[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<SpotifyTrack | null>(null);
   const [artistInfo, setArtistInfo] = useState<SpotifyArtistInfo | null>(null);
@@ -216,9 +219,16 @@ export function SpotifyScreen() {
     setError(null);
     try {
       setResults(await searchTracks(query, token));
+      setHasSearched(true);
     } catch (err) {
       setError(`Search failed: ${(err as Error).message}`);
     }
+  }
+
+  function clearSearch() {
+    setQuery("");
+    setHasSearched(false);
+    setResults([]);
   }
 
   async function unlockPlayback() {
@@ -296,7 +306,9 @@ export function SpotifyScreen() {
     }
   }
 
-  async function handleSelectTrack(track: SpotifyTrack) {
+  /** Selecting a track never plays it — it moves to the "ready" pause
+   *  screen so the person can take a breath before singing starts. */
+  function handleSelectTrack(track: SpotifyTrack) {
     setSelectedTrack(track);
     setArtistInfo(null);
     setPlainLyrics(null);
@@ -304,21 +316,37 @@ export function SpotifyScreen() {
     setActiveLine(-1);
     setError(null);
     setPhraseMap(null);
+    setStep("ready");
 
     if (track.artists?.[0]?.id) {
       getArtist(track.artists[0].id, token).then(setArtistInfo).catch(() => {});
     }
     loadLyricsFor(track);
+  }
 
+  async function handleBeginSinging() {
+    if (!selectedTrack) return;
+    setError(null);
     if (!deviceId) {
-      setError("Player isn't connected yet — give it a second, then press Play.");
+      setError("Player isn't connected yet — give it a second, then try again.");
       return;
     }
+    setStep("playing");
     try {
-      await startTrack(track);
+      await startTrack(selectedTrack);
     } catch (err) {
       setError(`Couldn't start playback: ${(err as Error).message}`);
     }
+  }
+
+  function handleBackToBrowse() {
+    if (positionIntervalRef.current) clearInterval(positionIntervalRef.current);
+    playerRef.current?.getCurrentState().then((state) => {
+      if (state && !state.paused) void pausePlayback(deviceId, token);
+    });
+    setStep("browse");
+    setSelectedTrack(null);
+    setIsPlaying(false);
   }
 
   async function handlePlayPause() {
@@ -339,44 +367,227 @@ export function SpotifyScreen() {
 
   const premiumProblem = me && me.product !== "premium";
 
+  const debugLine = (
+    <p className="text-secondary text-ink-muted">
+      player: {playerReady ? "ready" : "connecting…"} · device:{" "}
+      {deviceId ? "yes" : "none"} · auth: {authMode === "demo" ? "no-login" : "logged in"}
+    </p>
+  );
+
+  // ---- Step: ready — pause before singing starts (mirrors SingScreen's
+  // own not-started beat) ----
+  if (step === "ready" && selectedTrack) {
+    return (
+      <main className="flex h-[calc(100dvh-2.5rem)] min-h-[560px] flex-col">
+        <header className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={handleBackToBrowse}
+            aria-label="Back to search"
+            className="flex min-h-tap min-w-tap items-center justify-center rounded-token text-display-sm text-ink-muted"
+          >
+            <span aria-hidden="true">&larr;</span>
+          </button>
+          <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
+            Sing from Spotify
+          </p>
+        </header>
+
+        <section className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          {selectedTrack.album?.images?.[0] && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={selectedTrack.album.images[0].url}
+              alt=""
+              width={120}
+              height={120}
+              className="rounded-token-lg"
+            />
+          )}
+          <p className="display text-display-sm text-ink">{selectedTrack.name}</p>
+          <p className="text-body text-ink-muted">
+            {selectedTrack.artists.map((a) => a.name).join(", ")}
+          </p>
+          {artistInfo?.genres && artistInfo.genres.length > 0 && (
+            <p className="text-secondary text-ink-muted">{artistInfo.genres.join(", ")}</p>
+          )}
+
+          {/* Breath fit — never blocks Begin singing either way. */}
+          {lyricsStatus === "loading" && (
+            <p className="text-secondary text-ink-muted">
+              Checking this song&rsquo;s breath fit…
+            </p>
+          )}
+          {lyricsStatus === "synced" && phraseMap && (
+            <p className="text-secondary text-ink-muted">
+              {phraseMap.phrases.length} long phrase{phraseMap.phrases.length === 1 ? "" : "s"},
+              about {phraseMap.longestHoldSec}s each — {phraseMap.difficulty}.
+            </p>
+          )}
+          {lyricsStatus === "synced" && !phraseMap && (
+            <p className="text-secondary text-ink-muted">
+              No synced breath map for this song yet — go ahead and sing it, it
+              just won&rsquo;t coach your held notes this time.
+            </p>
+          )}
+          {lyricsStatus === "none" && (
+            <p className="text-secondary text-ink-muted">
+              No lyrics on screen for this one — you know the words, so sing
+              away.
+            </p>
+          )}
+          {lyricsStatus === "error" && (
+            <div className="flex items-center gap-2">
+              <p className="text-secondary text-ink-muted">
+                Couldn&rsquo;t load lyrics right now.
+              </p>
+              <button
+                type="button"
+                onClick={() => loadLyricsFor(selectedTrack)}
+                className="text-secondary text-ink underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {premiumProblem && (
+            <p className="max-w-[24rem] text-secondary text-ink-muted">
+              This is a <strong>{me!.product}</strong> account — Spotify
+              playback requires <strong>Premium</strong>, so audio won&rsquo;t
+              start, but you can still follow along.
+            </p>
+          )}
+          {error && <p className="max-w-[24rem] text-secondary text-ink-muted">{error}</p>}
+
+          <button
+            type="button"
+            onClick={handleBeginSinging}
+            className="mt-4 flex min-h-tap items-center justify-center rounded-token bg-action px-8 py-4 text-body font-medium text-on-action"
+          >
+            Begin singing
+          </button>
+        </section>
+
+        <Script src="https://sdk.scdn.co/spotify-player.js" strategy="afterInteractive" />
+      </main>
+    );
+  }
+
+  // ---- Step: playing — audio + lyrics ----
+  if (step === "playing" && selectedTrack) {
+    return (
+      <main className="flex h-[calc(100dvh-2.5rem)] min-h-[560px] flex-col">
+        <header className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={handleBackToBrowse}
+            aria-label="Exit singing"
+            className="flex min-h-tap min-w-tap items-center justify-center rounded-token text-display-sm text-ink-muted"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+          <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
+            {selectedTrack.name}
+          </p>
+        </header>
+
+        {error && (
+          <p className="rounded-token-lg border border-rule bg-surface p-4 text-body text-ink">
+            {error}
+          </p>
+        )}
+
+        <section className="flex flex-1 flex-col gap-4 overflow-hidden py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="truncate text-secondary text-ink-muted">
+                {selectedTrack.artists.map((a) => a.name).join(", ")}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handlePlayPause}
+              disabled={!playerReady}
+              className="flex min-h-tap shrink-0 items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action disabled:opacity-50"
+            >
+              {isPlaying ? "Pause" : "Play"}
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-2 overflow-y-auto border-t border-rule pt-4">
+            {lyricsLines.length > 0 ? (
+              lyricsLines.map((line, i) => (
+                <p
+                  key={i}
+                  className={
+                    i === activeLine
+                      ? "text-body font-medium text-ink"
+                      : "text-body text-ink-muted"
+                  }
+                >
+                  {line.text || "♪"}
+                </p>
+              ))
+            ) : plainLyrics ? (
+              <pre className="whitespace-pre-wrap text-body text-ink-muted">{plainLyrics}</pre>
+            ) : (
+              <p className="text-body text-ink-muted">
+                No lyrics on screen for this one — you know the words, so sing
+                away.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <Script src="https://sdk.scdn.co/spotify-player.js" strategy="afterInteractive" />
+      </main>
+    );
+  }
+
+  // ---- Step: browse — search bar on top, curated tiles or results below ----
   return (
-    <main className="space-y-8 pb-24">
+    <main className="space-y-6 pb-24">
       <header>
         <p className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
-          Sing from Spotify
+          Start singing
         </p>
       </header>
 
-      {/* Made for breath — no Spotify account needed, real working sessions. */}
-      <section className="space-y-4">
-        <h2 className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
-          Made for breath
-        </h2>
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {MOCK_SONGS.map((song) => (
-            <Link
-              key={song.id}
-              href={`/sing/${song.id}`}
-              className="min-w-[11rem] shrink-0 rounded-token-lg border border-rule bg-surface p-4"
-            >
-              <p className="display text-display-sm leading-tight text-ink">{song.title}</p>
-              <p className="text-secondary text-ink-muted">{song.artist}</p>
-              <p className="mt-2 text-secondary text-ink-muted">
-                longest hold: {formatHold(song.longestHoldSec)}
-              </p>
-            </Link>
-          ))}
-        </div>
+      <section className="space-y-2">
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search Spotify for a song…"
+            disabled={!token}
+            className="min-h-tap flex-1 rounded-token border border-rule bg-surface px-4 py-3 text-body text-ink disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!token}
+            className="flex min-h-tap items-center justify-center rounded-token bg-action px-5 text-body text-on-action disabled:opacity-50"
+          >
+            Search
+          </button>
+        </form>
+        {hasSearched && (
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="text-secondary text-ink-muted underline"
+          >
+            Clear search
+          </button>
+        )}
       </section>
 
-      {!token && !authReady && (
-        <p className="text-body text-ink-muted">Connecting…</p>
-      )}
+      {!token && !authReady && <p className="text-body text-ink-muted">Connecting…</p>}
 
       {!token && authReady && (
         <section className="space-y-4 rounded-token-lg border border-rule bg-surface p-6 text-center">
           <p className="text-body text-ink-muted">
-            Connect Spotify for more songs to search and sing.
+            Connect Spotify to search for a song.
           </p>
           <button
             type="button"
@@ -395,181 +606,82 @@ export function SpotifyScreen() {
         </section>
       )}
 
-      {token && (
-        <>
-          {premiumProblem && (
-            <p className="rounded-token-lg border border-rule bg-surface p-4 text-body text-ink">
-              This is a <strong>{me!.product}</strong> account. Spotify&rsquo;s
-              playback requires <strong>Premium</strong> — search and metadata
-              still work, but audio will not.
+      {premiumProblem && (
+        <p className="rounded-token-lg border border-rule bg-surface p-4 text-body text-ink">
+          This is a <strong>{me!.product}</strong> account. Spotify&rsquo;s
+          playback requires <strong>Premium</strong> — search and metadata
+          still work, but audio will not.
+        </p>
+      )}
+
+      {error && (
+        <p className="rounded-token-lg border border-rule bg-surface p-4 text-body text-ink">
+          {error}
+        </p>
+      )}
+
+      {hasSearched ? (
+        <section className="space-y-3">
+          {results.length === 0 ? (
+            <p className="text-body text-ink-muted">
+              No results for &ldquo;{query}&rdquo; — try another search.
             </p>
-          )}
-
-          {error && (
-            <p className="rounded-token-lg border border-rule bg-surface p-4 text-body text-ink">
-              {error}
-            </p>
-          )}
-
-          <section className="space-y-4">
-            <h2 className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
-              Search Spotify
-            </h2>
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search for a song…"
-                className="min-h-tap flex-1 rounded-token border border-rule bg-surface px-4 py-3 text-body text-ink"
-              />
-              <button
-                type="submit"
-                className="flex min-h-tap items-center justify-center rounded-token bg-action px-5 text-body text-on-action"
-              >
-                Search
-              </button>
-            </form>
-
-            {results.length > 0 && (
-              <ul className="space-y-2">
-                {results.map((track) => (
-                  <li key={track.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTrack(track)}
-                      className="flex min-h-tap w-full items-center gap-3 rounded-token border border-rule bg-surface p-3 text-left"
-                    >
-                      {track.album?.images?.[2] && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={track.album.images[2].url}
-                          alt=""
-                          width={40}
-                          height={40}
-                          className="rounded-token"
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-body text-ink">{track.name}</p>
-                        <p className="truncate text-secondary text-ink-muted">
-                          {track.artists.map((a) => a.name).join(", ")}
-                        </p>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {selectedTrack && (
-            <section className="space-y-4 rounded-token-lg border border-rule bg-surface p-5">
-              <div className="flex items-start gap-4">
-                {selectedTrack.album?.images?.[0] && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={selectedTrack.album.images[0].url}
-                    alt=""
-                    width={80}
-                    height={80}
-                    className="rounded-token"
-                  />
-                )}
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="display text-display-sm leading-tight text-ink">
-                    {selectedTrack.name}
-                  </p>
-                  <p className="text-secondary text-ink-muted">
-                    {selectedTrack.artists.map((a) => a.name).join(", ")}
-                  </p>
-                  {artistInfo?.genres && artistInfo.genres.length > 0 && (
-                    <p className="text-secondary text-ink-muted">
-                      {artistInfo.genres.join(", ")}
-                    </p>
-                  )}
-
-                  {/* Breath fit — never blocks Play either way. */}
-                  {lyricsStatus === "loading" && (
-                    <p className="text-secondary text-ink-muted">
-                      Checking this song&rsquo;s breath fit…
-                    </p>
-                  )}
-                  {lyricsStatus === "synced" && phraseMap && (
-                    <p className="text-secondary text-ink-muted">
-                      {phraseMap.phrases.length} long phrase
-                      {phraseMap.phrases.length === 1 ? "" : "s"}, about{" "}
-                      {phraseMap.longestHoldSec}s each — {phraseMap.difficulty}.
-                    </p>
-                  )}
-                  {lyricsStatus === "synced" && !phraseMap && (
-                    <p className="text-secondary text-ink-muted">
-                      No synced breath map for this song yet — go ahead and sing
-                      it, it just won&rsquo;t coach your held notes this time.
-                    </p>
-                  )}
-                  {lyricsStatus === "none" && (
-                    <p className="text-secondary text-ink-muted">
-                      No lyrics on screen for this one — you know the words, so
-                      sing away.
-                    </p>
-                  )}
-                  {lyricsStatus === "error" && (
-                    <div className="flex items-center gap-2">
-                      <p className="text-secondary text-ink-muted">
-                        Couldn&rsquo;t load lyrics right now.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => loadLyricsFor(selectedTrack)}
-                        className="text-secondary text-ink underline"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  )}
-
+          ) : (
+            <ul className="space-y-2">
+              {results.map((track) => (
+                <li key={track.id}>
                   <button
                     type="button"
-                    onClick={handlePlayPause}
-                    disabled={!playerReady}
-                    className="mt-2 flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-3 text-body text-on-action disabled:opacity-50"
+                    onClick={() => handleSelectTrack(track)}
+                    className="flex min-h-tap w-full items-center gap-3 rounded-token border border-rule bg-surface p-3 text-left"
                   >
-                    {isPlaying ? "Pause" : "Play"}
+                    {track.album?.images?.[2] && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={track.album.images[2].url}
+                        alt=""
+                        width={40}
+                        height={40}
+                        className="rounded-token"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-body text-ink">{track.name}</p>
+                      <p className="truncate text-secondary text-ink-muted">
+                        {track.artists.map((a) => a.name).join(", ")}
+                      </p>
+                    </div>
                   </button>
-                </div>
-              </div>
-
-              {(lyricsLines.length > 0 || plainLyrics) && (
-                <div className="max-h-80 space-y-2 overflow-y-auto border-t border-rule pt-4">
-                  {lyricsLines.length > 0
-                    ? lyricsLines.map((line, i) => (
-                        <p
-                          key={i}
-                          className={
-                            i === activeLine
-                              ? "text-body font-medium text-ink"
-                              : "text-body text-ink-muted"
-                          }
-                        >
-                          {line.text || "♪"}
-                        </p>
-                      ))
-                    : (
-                        <pre className="whitespace-pre-wrap text-body text-ink-muted">
-                          {plainLyrics}
-                        </pre>
-                      )}
-                </div>
-              )}
-            </section>
+                </li>
+              ))}
+            </ul>
           )}
-
-          <p className="text-secondary text-ink-muted">
-            player: {playerReady ? "ready" : "connecting…"} · device:{" "}
-            {deviceId ? "yes" : "none"} · auth: {authMode === "demo" ? "no-login" : "logged in"}
-          </p>
-        </>
+        </section>
+      ) : (
+        <section className="space-y-3">
+          <h2 className="text-secondary uppercase tracking-[0.14em] text-ink-muted">
+            Made for breath
+          </h2>
+          <div className="grid grid-cols-3 gap-2">
+            {MOCK_SONGS.map((song) => (
+              <Link
+                key={song.id}
+                href={`/sing/${song.id}`}
+                className="rounded-token border border-rule bg-surface p-3"
+              >
+                <p className="break-words text-body leading-tight text-ink">
+                  {song.title}
+                </p>
+                <p className="mt-1 break-words text-secondary text-ink-muted">
+                  {song.artist}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
+
+      {token && debugLine}
 
       <Script src="https://sdk.scdn.co/spotify-player.js" strategy="afterInteractive" />
       <BottomNav />

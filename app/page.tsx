@@ -164,15 +164,13 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* ---- primary action ---- */}
-      {songs.length > 0 && (
-        <Link
-          href={`/sing/${songs[0].id}`}
-          className="flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-4 text-body font-medium text-on-action"
-        >
-          Start singing
-        </Link>
-      )}
+      {/* ---- primary action: pick a song (curated or Spotify search) ---- */}
+      <Link
+        href="/spotify"
+        className="flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-4 text-body font-medium text-on-action"
+      >
+        Start singing
+      </Link>
 
       {/* ---- song list ---- */}
       <section className="space-y-4">
@@ -200,13 +198,6 @@ export default function HomePage() {
           </ul>
         )}
       </section>
-
-      <Link
-        href="/spotify"
-        className="flex min-h-tap items-center justify-center rounded-token border border-rule bg-surface px-6 py-4 text-body text-ink"
-      >
-        Sing from Spotify
-      </Link>
 
       <BottomNav />
     </main>
