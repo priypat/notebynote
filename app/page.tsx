@@ -184,6 +184,13 @@ export default function HomePage() {
           </ul>
         )}
       </section>
+
+      <Link
+        href="/welcome"
+        className="flex min-h-tap items-center justify-center text-secondary text-ink-muted underline"
+      >
+        Redo onboarding
+      </Link>
     </main>
   );
 }
