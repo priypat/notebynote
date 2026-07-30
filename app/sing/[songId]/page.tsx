@@ -8,10 +8,10 @@ export default async function SingPage({
   searchParams,
 }: {
   params: Promise<{ songId: string }>;
-  searchParams: Promise<{ source?: string }>;
+  searchParams: Promise<{ source?: string; demo?: string }>;
 }) {
   const { songId } = await params;
-  const { source } = await searchParams;
+  const { source, demo } = await searchParams;
 
   let song;
   try {
@@ -21,5 +21,5 @@ export default async function SingPage({
     throw err;
   }
 
-  return <SingScreen song={song} source={parseSource(source)} />;
+  return <SingScreen song={song} source={parseSource(source)} demo={demo === "1"} />;
 }

@@ -330,8 +330,15 @@ function ResultsContent({
         </section>
 
         <Link
-          href="/"
+          href="/progress"
           className="flex min-h-tap items-center justify-center rounded-token border border-rule bg-surface px-6 py-3 text-body text-ink"
+        >
+          See your progress
+        </Link>
+
+        <Link
+          href="/"
+          className="flex min-h-tap items-center justify-center text-secondary text-ink-muted underline"
         >
           Back home
         </Link>

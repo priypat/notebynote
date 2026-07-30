@@ -33,9 +33,15 @@ import {
 import type { PhraseResult, Song, TakeDraft } from "@/lib/types";
 import { createTake } from "@/lib/api";
 import { scorePhrase } from "@/lib/scoring/breathScore";
+import { fixtureForDemoPhrase } from "@/lib/demo/script";
+import { ensureDemoHistorySeeded } from "@/lib/demo/seed";
 import { usePrefersReducedMotion } from "../../useReducedMotion";
 import { splitSustained } from "../lyricHelpers";
 import { Ridge } from "../Ridge";
+
+/** Rescues a live mic session mid-song without a mouse — see README.md's
+ *  "Demo mode" section. Only fires while a real mic session is running. */
+const RESCUE_KEY = "f";
 
 const SETTLE_SEC = 1.8;
 const PAINT_MS = 60;
@@ -48,7 +54,18 @@ type Phase =
   | "saving"
   | "save-error";
 
-export function SingScreen({ song, source }: { song: Song; source: BreathSource }) {
+export function SingScreen({
+  song,
+  source,
+  demo = false,
+}: {
+  song: Song;
+  source: BreathSource;
+  /** ?demo=1 — see README.md. Scripts each phrase's fixture and auto-starts;
+   *  every other code path (state machine, scoring, createTake, redirect,
+   *  rendering) is identical to a real take. */
+  demo?: boolean;
+}) {
   const reducedMotion = usePrefersReducedMotion();
   const router = useRouter();
 
@@ -118,6 +135,13 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
     }
     if (typeof sourceRef.current === "object") {
       // A fixture is one hold-shaped clip — replay it fresh for each phrase.
+      // Demo mode additionally scripts *which* fixture per phrase.
+      if (demo) {
+        sourceRef.current = {
+          fixture: fixtureForDemoPhrase(idx, song.phrases.length),
+          loop: false,
+        };
+      }
       phaseRef.current = "calibrating";
       void breathEngine.start(sourceRef.current);
     } else {
@@ -135,8 +159,49 @@ export function SingScreen({ song, source }: { song: Song; source: BreathSource 
     resultsRef.current = [];
     startedAtRef.current = new Date().toISOString();
     phaseRef.current = "calibrating";
+    if (demo) {
+      sourceRef.current = {
+        fixture: fixtureForDemoPhrase(0, song.phrases.length),
+        loop: false,
+      };
+    }
     void breathEngine.start(sourceRef.current);
   }
+
+  /** The keyboard rescue and demo mode both land here: keep the current
+   *  phrase and everything already scored, just swap the input source. */
+  function handleSwitchToFixture() {
+    if (typeof sourceRef.current === "object") return; // already on a fixture
+    sourceRef.current = { fixture: "steady-12s", loop: false };
+    phaseRef.current = "calibrating";
+    setPhase("calibrating");
+    envelopeRef.current = [];
+    phraseFramesRef.current = [];
+    void breathEngine.start(sourceRef.current);
+  }
+
+  // Demo mode: seed a few months of history behind /progress, then start
+  // immediately — fixtures need no gesture, so there's nothing to tap.
+  useEffect(() => {
+    if (!demo) return;
+    void ensureDemoHistorySeeded();
+    handleBegin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo]);
+
+  // A mic failure on stage is recoverable in one keystroke.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== RESCUE_KEY) return;
+      if (e.target instanceof HTMLElement && ["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
+        return;
+      }
+      if (!started || typeof sourceRef.current === "object") return;
+      handleSwitchToFixture();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [started]);
 
   function handleUseFixtureInstead() {
     sourceRef.current = { fixture: "steady-12s", loop: false };
