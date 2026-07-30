@@ -8,11 +8,14 @@
  * never from outlines. Each plane is a smoothed, differently-windowed view of
  * the same amplitude signal, so the whole ridge stays a single record of one
  * breath rather than four unrelated shapes.
+ *
+ * Takes a plain `envelope` of RMS values rather than a fixture — this is the
+ * same render path whether those values came from a replayed fixture or a
+ * live microphone via breathEngine.subscribe(). Nothing here knows which.
  */
 
 import { useMemo } from "react";
 import { smoothAreaPath, smoothLinePath, type Point } from "./catmullRom";
-import type { FixtureSample } from "@/lib/audio/fixtures";
 
 const VIEW_W = 480;
 const VIEW_H = 320;
@@ -25,13 +28,9 @@ type Layer = {
   key: string;
   color: string;
   opacity: number;
-  /** Fraction of VIEW_H this layer's own baseline sits above BASELINE_Y. */
   baseOffsetFrac: number;
-  /** Fraction of VIEW_H the full amplitude swing covers. */
   ampFrac: number;
-  /** Moving-average window, in control points — farther layers are smoother. */
   smoothWindow: number;
-  /** Seconds between hairline copies of this layer's crest. */
   hairlineGapPx: number;
   hairlineOpacity: number;
   driftAmpPx: number;
@@ -97,6 +96,9 @@ const LAYERS: Layer[] = [
 /** Points sampled roughly this often — dense enough for shape, sparse enough
  *  that Catmull-Rom smoothing reads as terrain, not as the raw 60Hz signal. */
 const CONTROL_STEP_SEC = 0.12;
+/** Frames arrive at roughly this rate, mic or fixture — cosmetic only, used
+ *  to phase the ambient drift. */
+const ASSUMED_FRAME_RATE = 60;
 
 function movingAverage(values: number[], window: number): number[] {
   if (window <= 1) return values;
@@ -120,62 +122,59 @@ function roughnessOf(norm: number[]): number {
 }
 
 export function Ridge({
-  samples,
-  frameRate,
-  elapsedSec,
+  envelope,
+  assumedTotalFrames,
   settleAmount,
   reducedMotion,
 }: {
-  samples: FixtureSample[];
-  frameRate: number;
-  /** Playback position, in seconds, since this phrase's sustain began. */
-  elapsedSec: number;
+  /** RMS values collected so far, oldest first. Grows in place as a phrase
+   *  is sung — from a fixture replay or a live mic, indistinguishably. */
+  envelope: number[];
+  /** X-axis scale: how many frames the view width represents. Should only
+   *  grow (never shrink) so already-drawn terrain doesn't jump. */
+  assumedTotalFrames: number;
   /** 0 = fully present, 1 = fully settled into mist. */
   settleAmount: number;
   reducedMotion: boolean;
 }) {
-  const visibleCount = Math.max(
-    2,
-    Math.min(samples.length, Math.round(elapsedSec * frameRate)),
-  );
+  const total = Math.max(2, assumedTotalFrames);
 
   const { layerPaths, roughness } = useMemo(() => {
-    const norm = samples.map((s) => Math.max(0, Math.min(1, s.rms / REF_PEAK_RMS)));
-    const rough = roughnessOf(norm.slice(0, visibleCount));
+    const norm = envelope.map((rms) => Math.max(0, Math.min(1, rms / REF_PEAK_RMS)));
+    const rough = roughnessOf(norm);
 
-    const controlStepSamples = Math.max(1, Math.round(CONTROL_STEP_SEC * frameRate));
+    const controlStepSamples = Math.max(
+      1,
+      Math.round(CONTROL_STEP_SEC * ASSUMED_FRAME_RATE),
+    );
 
     const paths = LAYERS.map((layer) => {
       const smoothed = movingAverage(norm, layer.smoothWindow * 3);
       const baseline = BASELINE_Y - layer.baseOffsetFrac * VIEW_H;
 
       const points: Point[] = [];
-      for (let i = 0; i < visibleCount; i += controlStepSamples) {
-        const x = (i / Math.max(1, samples.length - 1)) * VIEW_W;
-        const t = i / frameRate;
+      for (let i = 0; i < norm.length; i += controlStepSamples) {
+        const x = (i / (total - 1)) * VIEW_W;
+        const t = i / ASSUMED_FRAME_RATE;
         const drift =
           reducedMotion || layer.driftAmpPx === 0
             ? 0
             : Math.sin(t * layer.driftHz * Math.PI * 2 + layer.driftPhase) *
               layer.driftAmpPx;
-        const y =
-          baseline - smoothed[i] * layer.ampFrac * VIEW_H + drift;
+        const y = baseline - smoothed[i] * layer.ampFrac * VIEW_H + drift;
         points.push({ x, y });
       }
-      // Always include the current leading edge so the fill reaches "now".
-      const lastIdx = visibleCount - 1;
-      const lastX = (lastIdx / Math.max(1, samples.length - 1)) * VIEW_W;
-      const lastY =
-        baseline - smoothed[lastIdx] * layer.ampFrac * VIEW_H;
-      if (points.length === 0 || points[points.length - 1].x < lastX) {
-        points.push({ x: lastX, y: lastY });
+      const lastIdx = norm.length - 1;
+      if (lastIdx >= 0) {
+        const lastX = (lastIdx / (total - 1)) * VIEW_W;
+        const lastY = baseline - smoothed[lastIdx] * layer.ampFrac * VIEW_H;
+        if (points.length === 0 || points[points.length - 1].x < lastX) {
+          points.push({ x: lastX, y: lastY });
+        }
       }
 
       const area = smoothAreaPath(points, baseline);
 
-      // Contour hairlines: parallel copies of the crest, offset downward.
-      // Steady breath spaces these evenly and keeps them solid; ragged breath
-      // crowds them and breaks them with a dash pattern.
       const gap = layer.hairlineGapPx * (1 - rough * 0.25);
       const hairlineCount = 3;
       const hairlines = Array.from({ length: hairlineCount }, (_, n) => {
@@ -184,11 +183,11 @@ export function Ridge({
         return smoothLinePath(shifted);
       });
 
-      return { key: layer.key, area, hairlines, baseline };
+      return { key: layer.key, area, hairlines };
     });
 
     return { layerPaths: paths, roughness: rough };
-  }, [samples, frameRate, visibleCount, reducedMotion]);
+  }, [envelope, total, reducedMotion]);
 
   const mistOpacity = 0.15 + settleAmount * 0.55;
 
@@ -205,7 +204,13 @@ export function Ridge({
           const p = layerPaths[i];
           const dash = roughness > 0.45 ? "5 4" : undefined;
           return (
-            <g key={layer.key} style={{ opacity: layer.opacity * (1 - settleAmount * 0.4) }}>
+            <g
+              key={layer.key}
+              style={{
+                opacity: layer.opacity * (1 - settleAmount * 0.4),
+                transition: reducedMotion ? "none" : "opacity 900ms var(--ease-calm)",
+              }}
+            >
               <path d={p.area} fill={layer.color} stroke="none" />
               {p.hairlines.map((d, hi) => (
                 <path
@@ -224,7 +229,8 @@ export function Ridge({
         })}
       </svg>
       {/* Mist — the settle. Drifts in as a phrase ends and the ridge joins
-          the landscape behind it, rather than announcing "done". */}
+          the landscape behind it, rather than announcing "done". Also the
+          resting state while waiting for the next phrase to begin. */}
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-t from-transparent to-[var(--dawn-mist)]"
         style={{
@@ -236,6 +242,3 @@ export function Ridge({
     </div>
   );
 }
-
-export { VIEW_W, VIEW_H, LAYERS };
-export type { Layer };

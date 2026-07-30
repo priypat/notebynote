@@ -46,7 +46,7 @@ export default function HomePage() {
 
       {/* ---- primary action ---- */}
       <Link
-        href="/sing/demo"
+        href={`/sing/${HOME_SONGS[0].id}`}
         className="flex min-h-tap items-center justify-center rounded-token bg-action px-6 py-4 text-body font-medium text-on-action"
       >
         Start singing
@@ -59,15 +59,17 @@ export default function HomePage() {
         </h2>
         <ul className="space-y-3">
           {HOME_SONGS.map((song) => (
-            <li
-              key={song.id}
-              className="rounded-token-lg border border-rule bg-surface p-5"
-            >
-              <p className="display text-display-sm text-ink">{song.title}</p>
-              <p className="text-secondary text-ink-muted">{song.artist}</p>
-              <p className="mt-2 text-secondary text-ink-muted">
-                longest hold: {formatHold(song.longestHoldSec)}
-              </p>
+            <li key={song.id}>
+              <Link
+                href={`/sing/${song.id}`}
+                className="block rounded-token-lg border border-rule bg-surface p-5"
+              >
+                <p className="display text-display-sm text-ink">{song.title}</p>
+                <p className="text-secondary text-ink-muted">{song.artist}</p>
+                <p className="mt-2 text-secondary text-ink-muted">
+                  longest hold: {formatHold(song.longestHoldSec)}
+                </p>
+              </Link>
             </li>
           ))}
         </ul>
