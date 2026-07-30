@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Lung Tunes — Organic Dawn
+   Single source of truth for color, type, and spacing.
+   See design-tokens.md. No raw hex values anywhere outside this file.
+
+   Two palettes, not one:
+     ATMOSPHERE (--dawn-*) — gradients, ridges, mist, silhouettes.
+                             Never text. Never state.
+     FUNCTIONAL             — text, actions, structure. All AA+ verified.
+   ========================================================================== */
+
+:root {
+  /* --- atmosphere ------------------------------------------------------- */
+  --dawn-peach: #f7c59f;
+  --dawn-sky: #a8d0e6;
+  --dawn-violet: #7c6a9c;
+  --dawn-mist: #f1edf4;
+
+  /* --- functional (dawn / light) ---------------------------------------- */
+  --bg: #fdf8f3; /* warm cream */
+  --surface: #ffffff;
+  --ink: #1f3a34; /* deep pine — 11.62:1 */
+  --ink-muted: #5e4f80; /* darkened violet — 6.85:1 */
+  --action: #2e5449; /* pine — 8.02:1; white on it 8.47:1 */
+  --on-action: #ffffff;
+  --rule: #d8d0c8; /* contour hairlines, dividers */
+  --mark: #c08a3e; /* graphic only, never text */
+
+  /* --- the signature gradient ------------------------------------------- */
+  --dawn: linear-gradient(
+    to top,
+    var(--dawn-peach) 0%,
+    var(--dawn-sky) 52%,
+    var(--dawn-violet) 100%
+  );
+
+  /* --- type ------------------------------------------------------------- */
+  --font-display: var(--font-fraunces), "Instrument Serif", Georgia, serif;
+  --font-body: var(--font-figtree), "Instrument Sans", system-ui, sans-serif;
+
+  --text-body: 18px; /* floor is 17px — never below */
+  --text-secondary: 17px;
+  --text-display-sm: 32px;
+  --text-display-md: 44px;
+  --text-display-lg: 64px;
+
+  --leading-body: 1.6;
+  --leading-display: 1.05;
+
+  /* --- structure -------------------------------------------------------- */
+  --radius: 14px;
+  --radius-lg: 22px;
+  --tap-min: 48px; /* minimum tap target, both axes */
+
+  --shadow:
+    0 1px 2px rgba(31, 58, 52, 0.05), 0 8px 24px rgba(31, 58, 52, 0.06);
+
+  /* --- motion ----------------------------------------------------------- */
+  --ease-calm: cubic-bezier(0.33, 0, 0.2, 1);
+  --dur-quick: 240ms;
+  --dur-settle: 720ms;
+  --dur-ambient: 2400ms;
+}
+
+/* Dusk — the evening theme. Not an afterthought: plenty of breath practice
+   happens at 2am. In dusk, peach and sky finally clear 10:1 and earn
+   semantic roles. */
+[data-theme="dusk"] {
+  --bg: #1a1428; /* deep dusk violet */
+  --surface: #231b33;
+  --ink: #fdf8f3; /* 16.94:1 */
+  --ink-muted: #d9d2e0; /* 12.13:1 */
+  --action: #a8d0e6; /* sky — 10.92:1, dark pine text on it */
+  --on-action: #16261f;
+  --rule: #3a3050;
+  --mark: #f7c59f; /* 11.44:1 */
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* Follow the OS unless a theme is pinned on <html>. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="dawn"]) {
+    --bg: #1a1428;
+    --surface: #231b33;
+    --ink: #fdf8f3;
+    --ink-muted: #d9d2e0;
+    --action: #a8d0e6;
+    --on-action: #16261f;
+    --rule: #3a3050;
+    --mark: #f7c59f;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* ==========================================================================
+   Tailwind theme — every utility in the app resolves back to a token above.
+   ========================================================================== */
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-action: var(--action);
+  --color-on-action: var(--on-action);
+  --color-rule: var(--rule);
+  --color-mark: var(--mark);
+
+  --color-dawn-peach: var(--dawn-peach);
+  --color-dawn-sky: var(--dawn-sky);
+  --color-dawn-violet: var(--dawn-violet);
+  --color-dawn-mist: var(--dawn-mist);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+
+  --text-secondary: var(--text-secondary);
+  --text-secondary--line-height: var(--leading-body);
+  --text-body: var(--text-body);
+  --text-body--line-height: var(--leading-body);
+  --text-display-sm: var(--text-display-sm);
+  --text-display-sm--line-height: var(--leading-display);
+  --text-display-md: var(--text-display-md);
+  --text-display-md--line-height: var(--leading-display);
+  --text-display-lg: var(--text-display-lg);
+  --text-display-lg--line-height: var(--leading-display);
+
+  --leading-body: var(--leading-body);
+  --leading-display: var(--leading-display);
+
+  --radius-token: var(--radius);
+  --radius-token-lg: var(--radius-lg);
+
+  --shadow-soft: var(--shadow);
+
+  --spacing-tap: var(--tap-min);
+
+  --ease-calm: var(--ease-calm);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  min-height: 100dvh;
+  /* Portrait-first app shell: stop rubber-banding the whole document. */
+  overscroll-behavior-y: contain;
+}
+
+/* Display type: high-contrast serif, WONK 0, SOFT low, opsz high so large
+   sizes stay elegant rather than quirky. */
+.display {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 0, "WONK" 0, "opsz" 96;
+  letter-spacing: -0.01em;
+}
+
+/* Large numerals — hero seconds counter, Breath Score. Serif, tabular. */
+.numeral {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 0, "WONK" 0, "opsz" 144;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.02em;
+}
+
+/* Visible focus that survives both themes. */
+:where(a, button, [role="button"], input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   Motion — calm and organic, or absent. Never jittery, never alarm-like.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
